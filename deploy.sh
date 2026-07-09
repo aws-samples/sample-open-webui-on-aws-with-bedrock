@@ -404,7 +404,7 @@ if [[ "$SKIP_CDK_DEPLOY" != "true" ]]; then
   info "Deploying all stacks (Network → Data → Auth → Compute)..."
   info "CDK will build + push the container image during the Compute stack deploy."
   CDK_DEFAULT_ACCOUNT="$ACCOUNT_ID" CDK_DEFAULT_REGION="$AWS_REGION" \
-    $CDK deploy --all --require-approval broadening
+    $CDK deploy --all --require-approval "$([ "$SKIP_CONFIRM" = "true" ] && echo never || echo broadening)"
   log "CDK deploy complete"
 fi
 
