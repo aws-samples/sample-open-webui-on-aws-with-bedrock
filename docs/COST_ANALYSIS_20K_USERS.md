@@ -77,6 +77,12 @@ Note: Input tokens grow with conversation length as the full history is sent wit
 
 ## 2. Bedrock LLM Cost Projections
 
+Requests reach Bedrock through the AgentCore gateway's `bedrock-mantle` target
+(the OpenAI-compatible endpoint) rather than `bedrock-runtime`. Per-model token
+pricing is identical either way — the numbers below apply unchanged — but note
+that `bedrock-mantle` carries its own service quotas (see §4), so quota planning
+should target the `bedrock-mantle` limits.
+
 ### Model Pricing (On-Demand, Bedrock, March 2026)
 
 | Model | Input/1M Tokens | Output/1M Tokens | Blended*/1M Tokens | Best For |
@@ -180,29 +186,51 @@ For 20K users, `cache.t3.small` is sufficient. Redis handles session caching and
 | Component | Monthly Cost | Notes |
 |---|---|---|
 | NAT Gateway | $35 + data | $0.045/hr + $0.045/GB processed |
-| NAT data processing | $10-50 | Depends on external API calls (Ollama, OpenAI) |
+| NAT data processing | $10-50 | Egress for the official image pull (ghcr.io) + any external API calls |
 | CloudFront | $10-30 | 1 distribution, mostly static asset caching |
 | ALB | $18-25 | Internal, light traffic |
-| VPC Endpoints | $0 | Included (interface endpoints for S3, ECR, Bedrock, etc.) |
+| VPC Endpoints | see below | Interface endpoints are not free |
 
-Wait — VPC interface endpoints are NOT free. Let me correct:
-
-<Actually, VPC Gateway endpoints (S3, DynamoDB) are free. Interface endpoints cost ~$0.01/hr per AZ. With endpoints for ECR, Bedrock, CloudWatch, Secrets Manager across 2 AZs:>
+VPC Gateway endpoints (S3, DynamoDB) are free. Interface endpoints cost
+~$0.01/hr per AZ. With endpoints for Bedrock, CloudWatch, and Secrets Manager
+across 2 AZs:
 
 | VPC Endpoints | Count × AZs | Monthly Cost |
 |---|---|---|
-| Interface endpoints (ECR, Bedrock, CW, SM) | ~6 × 2 AZs | $87 |
+| Interface endpoints (Bedrock, CW, SM) | ~4-6 × 2 AZs | $60-90 |
 
-This is a significant hidden cost. Consider whether all endpoints are needed or if NAT Gateway can handle some traffic.
+This is a meaningful hidden cost. Consider whether all endpoints are needed or
+whether the NAT Gateway can carry some of that traffic. (The official Open WebUI
+image is pulled from `ghcr.io` over NAT, not from an ECR endpoint — this sample
+builds and stores **no** custom image.)
+
+### Gateway & Lambdas (Bedrock integration)
+
+The Bedrock integration is delivered as AWS infrastructure rather than a custom
+image. These components add only trivially to the fixed monthly cost:
+
+| Component | Monthly Cost | Notes |
+|---|---|---|
+| AgentCore inference gateway | low | Billed per request + data transferred through it; every model call passes through, but the per-request charge is small next to the Bedrock token cost |
+| Models-filter interceptor Lambda | negligible | Invoked only on model-list calls (not per chat message); tiny compute |
+| Provisioner Lambda (custom resource) | ~$0 | Runs only at deploy to create the `bedrock-mantle` inference target; idle thereafter |
+
+These do not change the order of magnitude of infrastructure cost — the model
+call still flows to Bedrock, and Bedrock token consumption remains the dominant
+driver (see §2).
 
 ### Storage
 
 | Component | Monthly Cost |
 |---|---|
 | S3 (file uploads, 50 GB) | $1-2 |
-| ECR (container images, 5 GB) | $0.50 |
 | CloudWatch Logs (50 GB/month) | $25 |
 | Aurora storage (20 GB) | $2 |
+
+There is **no ECR image-storage cost**: the deployed container is the unmodified
+official Open WebUI image pulled from `ghcr.io` at deploy time — this sample
+builds and stores no custom image, and the CDK asset ECR repo is not used for an
+application image.
 
 ### Secrets & Security
 
@@ -236,13 +264,18 @@ Note: First 10,000 MAU are free for the first 12 months on new accounts.
 | CloudFront | $10 | $20 | $40 |
 | ALB | $18 | $22 | $30 |
 | VPC Interface Endpoints | $87 | $87 | $87 |
+| Gateway + interceptor/provisioner Lambdas | $2 | $5 | $15 |
 | CloudWatch Logs | $10 | $25 | $50 |
-| S3 + ECR | $2 | $3 | $5 |
+| S3 | $2 | $3 | $5 |
 | Secrets Manager | $2 | $2 | $2 |
 | Cognito (Essentials) | $0* | $176 | $176 |
-| **Total Infrastructure** | **$257** | **$690** | **$1,190** |
+| **Total Infrastructure** | **$259** | **$695** | **$1,205** |
 
 *Free tier for first 12 months.
+
+There is no line for building or storing a custom image and no build/release
+pipeline: the app is the unmodified official image pulled from `ghcr.io`, so the
+earlier image-storage and CI/CD build costs no longer apply.
 
 ---
 
@@ -255,15 +288,10 @@ Implement intelligent model routing based on task complexity:
 | Strategy | Savings vs. Sonnet-for-all | How |
 |---|---|---|
 | Default to Nova Pro, upgrade on demand | 60-70% | Use Nova Pro as default, let users select Sonnet/Opus |
-| Default to Haiku, Sonnet for faculty | 40-50% | Group-based model access (already built) |
-| Auto-route by prompt complexity | 50-60% | Pipe Function that classifies and routes |
+| Default to Haiku, Sonnet for faculty | 40-50% | Group-based model access (Open WebUI native) |
+| Auto-route by prompt complexity | 50-60% | Open WebUI pipe function that classifies and routes |
 
-Our group-based model access control is perfectly suited for this. In the admin UI, set expensive models (Sonnet, Opus) to Private and grant access only to faculty/power-users groups. Use `scripts/set-model-access.sh` for bulk operations:
-
-```bash
-./scripts/set-model-access.sh --url $URL --token $TOKEN --group faculty --pattern "us.anthropic.claude-*"
-./scripts/set-model-access.sh --url $URL --token $TOKEN --group basic-users --pattern "us.amazon.nova-*"
-```
+Open WebUI's native group-based model access control is well suited for this. In the admin UI, set expensive models (Sonnet, Opus) to Private and grant access only to faculty/power-users groups (e.g. `us.anthropic.claude-*` to faculty, `us.amazon.nova-*` to basic users). Because the gateway interceptor already surfaces only the models that work per connection, admins are choosing among a clean, functional model list.
 
 ### Token Budgets as a Cost Ceiling (strategy — enforcement not included)
 
@@ -281,14 +309,15 @@ tiered budgets would cap costs at, whichever enforcement mechanism you choose:
 Ways to realize these ceilings without application-level enforcement:
 
 - **Bedrock service quotas** — per-model requests/tokens-per-minute ceilings at
-  the account level (coarse, but a real hard stop).
+  the account level (coarse, but a real hard stop). Because calls flow through
+  the `bedrock-mantle` endpoint, plan against its quotas (see §2).
 - **CloudWatch alarms on Bedrock usage metrics** — alert (or trigger an
   automation) when daily/monthly token consumption crosses a threshold.
 - **Application inference profiles** — tag Bedrock usage per workload for cost
   allocation and per-profile monitoring.
-- **Group-based model access** (included in this sample) — restrict expensive
-  models to small groups via `scripts/set-model-access.sh`; the cheapest
-  effective control because the price gap between models is the largest lever.
+- **Group-based model access** (Open WebUI native) — restrict expensive
+  models to small groups in the admin UI; the cheapest effective control
+  because the price gap between models is the largest lever.
 - **Extend the sample** — Open WebUI's middleware pipeline offers inlet/outlet
   hooks where a quota service could be added; per-response usage is already
   emitted in OpenAI-shape fields.

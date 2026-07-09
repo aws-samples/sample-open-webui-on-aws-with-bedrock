@@ -1,202 +1,176 @@
-# Deploy Open WebUI on AWS with native Amazon Bedrock support
+# Open WebUI on AWS with Amazon Bedrock
 
 Deploy [Open WebUI](https://github.com/open-webui/open-webui) on AWS (Amazon ECS
-on Fargate) with a native Amazon Bedrock provider — an AWS deployment sample.
+on Fargate) and connect it to Amazon Bedrock models through an **Amazon Bedrock
+AgentCore inference gateway** — an AWS deployment sample.
 
 > **About the application.** This is a deployment sample for the third-party
 > Open WebUI project by Open WebUI Inc. Open WebUI is **not included in this
-> repository**: it is obtained at build/deploy time from its official
-> distribution channels and is licensed separately under the Open WebUI License
-> (see [`NOTICE`](NOTICE) and [`THIRD-PARTY-LICENSES.md`](THIRD-PARTY-LICENSES.md)).
-> The sample deploys it with **unmodified branding**. The application is the
-> official Open WebUI release (pinned to **v0.10.2**), unmodified except for a
-> small, clearly-attributed Bedrock provider addition: **2 new backend modules +
-> 5 patches totaling ≈85 lines** (an optional admin-panel UI adds 1 module + 2
-> patches). Everything AWS-authored is under [`overlay/`](overlay/),
-> [`patches/`](patches/), [`infra/`](infra/), [`scripts/`](scripts/) and
-> [`docs/`](docs/).
+> repository** and is licensed separately under the Open WebUI License (see
+> [`NOTICE`](NOTICE) and [`THIRD-PARTY-LICENSES.md`](THIRD-PARTY-LICENSES.md)).
+>
+> The deployed container is the **completely unmodified official Open WebUI
+> image**, pinned by digest (currently **v0.10.2**) and pulled from
+> `ghcr.io/open-webui/open-webui` at deploy time. There is **no fork, no
+> patches, and no image build**. The Amazon Bedrock integration is delivered
+> entirely as AWS infrastructure + runtime configuration:
+>
+> 1. an **AgentCore inference gateway** that fronts Amazon Bedrock's
+>    OpenAI-compatible endpoint, authenticated per-user via Amazon Cognito; and
+> 2. a small Open WebUI **pipe function** for Anthropic Claude models (which are
+>    Messages-API-only on Bedrock), plus two native OpenAI connections — all
+>    seeded into the app database at container start.
+>
+> Everything AWS-authored lives under [`infra/`](infra/) (CDK), [`gateway/`](gateway/)
+> (interceptor + provisioner Lambdas), [`pipe/`](pipe/) (the Claude pipe + seeder),
+> [`config/`](config/), [`scripts/`](scripts/), and [`docs/`](docs/).
 
-The pin is **v0.10.2** because that upstream release includes security and
-access-control fixes (upstream advises production deployments to update);
-[`docs/UPGRADE_RUNBOOK.md`](docs/UPGRADE_RUNBOOK.md) covers bumping the pin.
+The upstream pin is **v0.10.2** because that release contains upstream security
+and access-control fixes; [`docs/UPGRADE_RUNBOOK.md`](docs/UPGRADE_RUNBOOK.md)
+covers moving the pin.
+
+## Why a gateway?
+
+Amazon Bedrock exposes an OpenAI-compatible endpoint (`bedrock-mantle`) that
+Open WebUI can talk to natively — but with two wrinkles this sample solves:
+
+- **Per-user identity & governance.** The AgentCore gateway accepts the
+  logged-in user's own Cognito OAuth token (Open WebUI's `system_oauth`
+  connection auth). Every model call reaches Bedrock **as that user**, ready for
+  [Amazon Bedrock AgentCore Policy](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy.html)
+  (Cedar), Guardrails, and per-user throttling — with no static API keys.
+- **Only-working-models.** Bedrock models don't all support the same API
+  (Anthropic Claude is Messages-only; the GPT-5.x family is Responses-only;
+  most others are Chat Completions). A gateway interceptor filters the model
+  listing per connection so Open WebUI **only ever surfaces models that
+  actually work** — nothing that would error when a user picks it.
+
+The result: one governed endpoint, three lanes, every compatible Bedrock model
+functional in the Open WebUI dropdown with per-user identity end to end.
 
 ## Architecture
 
 ```
-                           ┌──────────────────┐
-                           │    End Users      │
-                           └────────┬─────────┘
-                                    │ HTTPS
-                           ┌────────▼─────────┐
-                           │   CloudFront      │
-                           │   Distribution    │
-                           │  (HTTPS + CDN)    │
-                           └────────┬─────────┘
-                                    │ VPC Origin
-┌───────────────────────────────────┼──────────────────────────────────┐
-│  VPC (Private Subnets)            │                                  │
-│                          ┌────────▼─────────┐                        │
-│                          │  Internal ALB     │                        │
-│                          │  (not internet-   │                        │
-│                          │   facing)         │                        │
-│                          └────────┬─────────┘                        │
-│                                   │                                  │
-│                          ┌────────▼─────────┐                        │
-│                          │  ECS Fargate      │                        │
-│                          │  (Open WebUI)     │                        │
-│                          └──┬─────┬──────┬──┘                        │
-│                             │     │      │                           │
-│              ┌──────────────┘     │      └──────────────┐            │
-│              │                    │                      │            │
-│     ┌────────▼──────┐   ┌────────▼──────┐   ┌──────────▼────────┐   │
-│     │    Aurora      │   │  ElastiCache  │   │    S3 Bucket      │   │
-│     │  PostgreSQL    │   │    Redis      │   │   (file uploads)  │   │
-│     │ Serverless v2  │   │   (TLS)      │   │                   │   │
-│     └───────────────┘   └──────────────┘   └───────────────────┘   │
-│                                                                      │
-│     ┌───────────────┐   ┌──────────────┐   ┌───────────────────┐   │
-│     │   Cognito      │   │   Secrets    │   │  VPC Endpoints    │   │
-│     │  User Pool     │   │   Manager    │   │ (S3, ECR, Bedrock │   │
-│     │  (SSO)         │   │              │   │  CW, SM)          │   │
-│     └───────────────┘   └──────────────┘   └───────────────────┘   │
-└──────────────────────────────────────────────────────────────────────┘
-                                    │
-                           ┌────────▼─────────┐
-                           │  Amazon Bedrock   │
-                           │  (Converse API)   │
-                           │  Cross-region     │
-                           │  inference        │
-                           └──────────────────┘
+                            End users
+                                │ HTTPS
+                        ┌───────▼────────┐
+                        │   CloudFront    │
+                        └───────┬────────┘
+                                │ VPC origin
+┌───────────────────────────────┼──────────────────────────────────────────┐
+│ VPC (private subnets)          │                                          │
+│                        ┌───────▼────────┐                                 │
+│                        │  Internal ALB   │                                 │
+│                        └───────┬────────┘                                 │
+│                    ┌───────────▼───────────┐    ┌────────────────────┐    │
+│                    │  ECS Fargate            │    │  Aurora PostgreSQL  │    │
+│                    │  UNMODIFIED official     │◄──►│  (pgvector)         │    │
+│                    │  Open WebUI (v0.10.2)    │    └────────────────────┘    │
+│                    │  + Claude pipe +        │    ┌────────────────────┐    │
+│                    │    2 OpenAI connections │◄──►│  ElastiCache Redis  │    │
+│                    └───────┬─────────────────┘    └────────────────────┘    │
+└────────────────────────────┼──────────────────────────────────────────────┘
+   user's OAuth token (system_oauth) │ per-user JWT
+                    ┌────────────────▼───────────────┐
+                    │  AgentCore inference gateway     │  CUSTOM_JWT (Cognito)
+                    │  • REQUEST interceptor:          │  + models-filter Lambda
+                    │    capability-filtered listing   │
+                    │  • bedrock-mantle target         │  GATEWAY_IAM_ROLE (SigV4)
+                    └────────────────┬─────────────────┘
+                    ┌────────────────▼───────────────┐
+                    │  Amazon Bedrock (bedrock-mantle) │
+                    └──────────────────────────────────┘
 ```
 
-Request flow: CloudFront (WebSocket-capable VPC origin) → internal ALB → ECS
-Fargate → Aurora Serverless v2 / ElastiCache Redis / S3, with Cognito OIDC for
-sign-in, Secrets Manager for all secrets, and the Bedrock Converse API for
-model inference.
+The user's identity flows Cognito → gateway → Bedrock the whole way. See
+[`docs/GATEWAY_INTEGRATION_GUIDE.md`](docs/GATEWAY_INTEGRATION_GUIDE.md) for the
+full design.
 
-## What you get
+## The three model lanes
 
-- **Native Bedrock provider** — Converse/ConverseStream streaming, tool
-  calling, inference-profile discovery, and per-response token usage emitted in
-  OpenAI-shape fields so Open WebUI's native usage display works unchanged.
-- **Model access control** — Open WebUI's native per-model access grants,
-  automated by [`scripts/set-model-access.sh`](scripts/set-model-access.sh);
-  coarse allow-listing via `BEDROCK_ALLOWED_MODELS`.
-- **Cognito SSO** — configuration-only integration through Open WebUI's
-  built-in OIDC support (no auth code changes).
-- **Three deploy modes** — one-command (`./deploy.sh`), single pipeline, or
-  multi-environment CI/CD (see [`docs/CICD_DEPLOYMENT_GUIDE.md`](docs/CICD_DEPLOYMENT_GUIDE.md)).
-- **Two image targets** — `backend` (default: the official image + Bedrock
-  provider only) and `full` (opt-in: rebuilds the UI with an admin Connections
-  panel section for Bedrock settings).
+All three are seeded automatically at container start
+([`pipe/seed.py`](pipe/seed.py)); all authenticate with the user's own OAuth
+token through the one gateway.
 
-## What you do NOT get (by design)
+| Lane | How it's wired | Models it serves |
+|---|---|---|
+| **Chat Completions** | native OpenAI connection (`system_oauth`), interceptor flavor `chat_completions` | the majority — Qwen, DeepSeek, Mistral, gpt-oss, Gemma, etc. |
+| **Responses** | native OpenAI connection (`system_oauth`, `api_type: responses`) | the Responses-only family (e.g. GPT-5.x) + gpt-oss |
+| **Messages (Claude)** | the [`pipe/gateway_anthropic_pipe.py`](pipe/gateway_anthropic_pipe.py) manifold pipe | Anthropic Claude (Messages-API-only on Bedrock) |
 
-No token metering, no per-user quota enforcement, no cost dashboards — out of
-scope for this sample. For cost management, use AWS-native mechanisms: Bedrock
-service quotas, CloudWatch Bedrock usage metrics, application inference
-profiles for cost allocation, and AWS Budgets. See
-[`docs/COST_ANALYSIS_20K_USERS.md`](docs/COST_ANALYSIS_20K_USERS.md) for
-sizing and cost-control strategies.
+Which model ids fall in each lane is data, not code:
+[`config/model-capabilities.json`](config/model-capabilities.json), regenerated
+with [`scripts/probe-model-capabilities.py`](scripts/probe-model-capabilities.py).
 
 ## Prerequisites
 
-- An AWS account with permission to create the resources above
-- AWS CLI v2, configured (`aws configure` / SSO)
-- Node.js 18–22 and npm
-- Docker (CDK builds the container image locally during deploy)
-- Amazon Bedrock model access enabled in your target region
-  ([console → Bedrock → Model access](https://console.aws.amazon.com/bedrock/home#/modelaccess))
-- Optional: a custom domain + ACM certificate in us-east-1
+- An AWS account with **Amazon Bedrock model access** enabled for the models you
+  want ([Bedrock console → Model access](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html)).
+- **AWS CLI v2**, **Node.js 20+**, and **npm**. (No Docker — there is no image
+  build.)
+- CDK bootstrapped in your target account/region (`npx cdk bootstrap`), or let
+  `deploy.sh` do it.
+- A region where both Amazon Bedrock (`bedrock-mantle`) and CloudFront VPC
+  origins are available (e.g. `us-east-1`, `us-east-2`, `us-west-2`).
 
-## Deploy
+## Quick start
 
 ```bash
 git clone https://github.com/aws-samples/sample-open-webui-on-aws-with-bedrock.git
 cd sample-open-webui-on-aws-with-bedrock
-cp .env.example .env       # review/edit application settings
-./deploy.sh                # guided deployment
+
+cp .env.example .env      # review; no Bedrock vars needed (gateway handles it)
+./deploy.sh               # interactive: pick profile + region, then deploy
 ```
 
-Full instructions, including CI/CD pipelines and multi-environment setups:
+`deploy.sh` deploys five CDK stacks (Network → Data → Auth → Gateway → Compute),
+then prints the CloudFront URL. First deploy takes ~25–35 min (Aurora + Redis +
+CloudFront are the long poles). Then:
+
+1. Open the CloudFront URL and sign in with **Amazon Cognito** (create a user in
+   the Cognito console first, or enable self-signup — see the deployment guide).
+   The **first** user to sign in becomes the admin.
+2. The Bedrock models appear in the model dropdown within a minute of first
+   admin sign-in (the seeder installs the pipe + connections on that event).
+
+Full instructions — Cognito user setup, custom domains, model access control:
 [`docs/AWS_DEPLOYMENT_GUIDE.md`](docs/AWS_DEPLOYMENT_GUIDE.md).
 
-## Configuration
+## Repository layout
 
-Application settings live in `.env` (from [`.env.example`](.env.example)). The
-Bedrock provider reads four variables:
-
-| Variable | Purpose | Default |
-|---|---|---|
-| `ENABLE_BEDROCK_API` | Enable the provider | `false` (infra sets `true`) |
-| `BEDROCK_REGION` | Bedrock region | `us-east-1` (infra sets the deploy region) |
-| `BEDROCK_ENDPOINT_URL` | Custom endpoint (VPC endpoint) | empty |
-| `BEDROCK_ALLOWED_MODELS` | Comma-separated model allow-list | empty (all visible models) |
-
-All four are also admin-editable at runtime via
-`GET/POST /api/v1/bedrock/config` and `/api/v1/bedrock/config/update` (and, in
-the `full` image target, in Admin Settings → Connections). See
-[`docs/BEDROCK_INTEGRATION_GUIDE.md`](docs/BEDROCK_INTEGRATION_GUIDE.md).
+```
+infra/                     CDK app (TypeScript)
+  bin/app.ts               5 stacks: Network, Data, Auth, Gateway, Compute
+  lib/gateway-stack.ts     AgentCore gateway + interceptor + inference target
+  lib/compute-stack.ts     ECS Fargate running the unmodified official image
+  lib/{network,data,auth}-stack.ts
+gateway/
+  interceptor/index.py     REQUEST interceptor: capability-filtered model listing
+  provisioner/index.py     custom resource: creates the bedrock-mantle inference target
+pipe/
+  gateway_anthropic_pipe.py  Claude manifold pipe (per-user OAuth to the gateway)
+  seed.py                    installs the pipe + 2 OpenAI connections at boot
+config/model-capabilities.json   which models work on which API (interceptor input)
+scripts/probe-model-capabilities.py   regenerate the capability matrix
+deploy.sh                  one-command deploy
+docs/                      deployment, gateway integration, upgrade, cost
+```
 
 ## Cost
 
-Sample cost breakdown with default parameters in `us-east-1` for one month
-(prices as of mid-2026 — verify with the AWS Pricing Calculator). Bedrock token
-usage is excluded (varies with use).
+Infrastructure (VPC/ALB/ECS/Aurora/Redis/CloudFront/gateway/Lambdas) is a small
+fixed monthly cost; the dominant driver is Bedrock token consumption, which is
+pay-per-use. See [`docs/COST_ANALYSIS_20K_USERS.md`](docs/COST_ANALYSIS_20K_USERS.md).
 
-| AWS Service | Dimensions | Cost/Month (USD) |
-|---|---|---|
-| Amazon ECS (Fargate) | 1 task, 1 vCPU, 2 GB memory, 24/7 | ~$35 |
-| Amazon CloudFront | 1 distribution, 100 GB transfer, 1M requests | ~$10 |
-| Aurora PostgreSQL Serverless v2 | 0.5 ACU minimum, light usage | ~$45 |
-| Amazon ElastiCache (Redis) | 1 cache.t3.micro node | ~$13 |
-| Amazon VPC | 1 NAT Gateway, 10 GB data processed | ~$35 |
-| Application Load Balancer | 1 ALB, light traffic | ~$18 |
-| Amazon S3 | 10 GB storage | ~$1 |
-| Amazon Cognito | Up to 50,000 MAU (free tier) | $0 |
-| AWS Secrets Manager | 3 secrets | ~$2 |
-| Amazon ECR | 2 GB image storage | ~$1 |
-| Amazon CloudWatch | Log storage and basic metrics | ~$5 |
-| ACM | 1 certificate | Free |
-| **TOTAL** | | **~$165/month** |
+## Security
 
-Aurora scales to 0.5 ACU when idle; ECS auto-scales up to 10 tasks under load.
-Consider an [AWS Budget](https://docs.aws.amazon.com/cost-management/latest/userguide/budgets-create.html)
-to monitor spending.
+Private ALB (CloudFront-only ingress via VPC origin), all compute/data in
+private subnets, TLS in transit, encryption at rest, secrets in AWS Secrets
+Manager, Cognito SSO, and per-user identity on every model call through the
+gateway. See the Security section of the deployment guide.
 
-## Security notes
+## License
 
-- Private networking: the ALB is internal; only CloudFront reaches it through a
-  VPC origin (ingress restricted to the CloudFront origin-facing prefix list).
-- All secrets (app secret key, Cognito client secret, DB password) live in
-  Secrets Manager and are injected at task launch.
-- The Bedrock IAM policy is narrow (Converse/model-listing) and attached only
-  when Bedrock is enabled.
-- WAF can be added on the CloudFront distribution as an extension.
-
-## Known limitations
-
-- Upstream is pinned to Open WebUI v0.10.2; bumping the pin requires
-  re-validating the 7 patches ([`docs/UPGRADE_RUNBOOK.md`](docs/UPGRADE_RUNBOOK.md)).
-- The admin Bedrock Connections panel exists only in the opt-in `full` image
-  target; the default `backend` target configures Bedrock via env vars or the
-  REST admin API.
-- No per-user quota enforcement (see "What you do NOT get").
-
-## Uninstall
-
-```bash
-cd infra
-npx cdk destroy --all
-```
-
-Resources with retention policies (S3 upload bucket, Aurora final snapshot,
-CloudWatch logs) must be deleted manually afterwards — see the
-[deployment guide](docs/AWS_DEPLOYMENT_GUIDE.md) uninstall section.
-
-## Contributing / Security / License
-
-- [CONTRIBUTING.md](CONTRIBUTING.md)
-- [Security issue notifications](SECURITY.md)
-- License: [MIT-0](LICENSE) for AWS-authored content; Open WebUI is licensed
-  separately (see [NOTICE](NOTICE) and [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md)).
+This sample is licensed under **MIT-0** (see [`LICENSE`](LICENSE)). The Open
+WebUI application it deploys is a separate third-party project under its own
+license — see [`NOTICE`](NOTICE) and [`THIRD-PARTY-LICENSES.md`](THIRD-PARTY-LICENSES.md).

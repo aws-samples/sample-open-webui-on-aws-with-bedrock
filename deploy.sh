@@ -14,9 +14,10 @@ fi
 # Open WebUI — AWS End-to-End Deployment Script
 # ============================================================
 # Uses .env as the single source of truth for all configuration.
-# The container image is built and pushed to ECR by CDK itself (via a
-# DockerImageAsset in the ComputeStack) during `cdk deploy`, so this
-# script no longer performs docker build/push directly.
+# This sample runs the UNMODIFIED official Open WebUI image (pulled by digest
+# at deploy time). There is no image build. The Amazon Bedrock integration is
+# the AgentCore inference gateway (GatewayStack) plus a pipe function + two
+# OpenAI connections seeded into the app database at container start.
 #
 # Usage:
 #   ./deploy.sh                              # Full deploy (infra + image + env)
@@ -74,11 +75,11 @@ Options:
   --yes                Skip confirmation prompts
   --help               Show this help
 
-The container image is built and pushed to ECR by CDK during `cdk deploy`
-via a DockerImageAsset. Docker must be available on the machine running
-this script (full deploy mode). The .env file is the source of truth for
-all application configuration. Infrastructure values (from CDK stack
-outputs) are auto-populated on first deploy.
+No Docker or image build is involved — CDK deploys the unmodified official
+Open WebUI image by digest and provisions the AgentCore inference gateway.
+The .env file is the source of truth for application configuration;
+infrastructure values (from CDK stack outputs) are auto-populated on first
+deploy.
 EOF
   exit 0
 }
@@ -228,7 +229,6 @@ build_ecs_env_overrides() {
     ENABLE_OAUTH_GROUP_MANAGEMENT OAUTH_GROUP_CLAIM ENABLE_OAUTH_GROUP_CREATION
     OAUTH_MERGE_ACCOUNTS_BY_EMAIL WEBUI_AUTH_SIGNOUT_REDIRECT_URL
     ENABLE_WEBSOCKET_SUPPORT
-    ENABLE_BEDROCK_API BEDROCK_REGION BEDROCK_ENDPOINT_URL BEDROCK_ALLOWED_MODELS
     ENABLE_OLLAMA_API OLLAMA_BASE_URLS
     ENABLE_OPENAI_API OPENAI_API_BASE_URLS OPENAI_API_KEYS
     ENABLE_SIGNUP DEFAULT_USER_ROLE WEBUI_ADMIN_EMAIL WEBUI_ADMIN_NAME
@@ -253,21 +253,13 @@ build_ecs_env_overrides() {
 # ── Preflight checks ───────────────────────────────────────
 header "Preflight Checks"
 
-for cmd in aws docker node npm; do
+# No Docker required: this sample runs the unmodified official Open WebUI
+# image (pulled by digest at deploy time). The Bedrock integration is the
+# AgentCore inference gateway + a pipe function seeded at container start.
+for cmd in aws node npm; do
   check_command "$cmd"
   log "$cmd found: $(command -v "$cmd")"
 done
-
-# Full deploy requires a running Docker daemon for CDK's DockerImageAsset
-# to build + push the container image. --env-only skips CDK entirely.
-if [[ "$ENV_ONLY" != "true" ]]; then
-  if ! docker info >/dev/null 2>&1; then
-    err "Docker daemon is not reachable. CDK requires Docker to build the app image."
-    err "Start Docker (Docker Desktop, 'sudo systemctl start docker', etc.) and re-run."
-    exit 1
-  fi
-  log "Docker daemon reachable"
-fi
 
 if command -v cdk &>/dev/null; then
   CDK="cdk"
@@ -388,21 +380,8 @@ if [[ "$SKIP_CDK_DEPLOY" != "true" ]]; then
   cd "$INFRA_DIR"
   npm install --silent
 
-  # Pass git SHA into DockerImageAsset buildArgs so the container image
-  # stamps WEBUI_BUILD_VERSION with the commit. Read in compute-stack.ts.
-  export GIT_COMMIT="$(git rev-parse HEAD 2>/dev/null || echo 'local')"
-  info "GIT_COMMIT=$GIT_COMMIT (stamped into image as BUILD_HASH)"
-
-  # Heads-up for Apple Silicon users: cross-building linux/amd64 under QEMU
-  # is slow (~30-60 min end-to-end) because the Python runtime stage
-  # downloads + quantizes ML models.
-  if [[ "$(uname -sm)" == "Darwin arm64" ]]; then
-    warn "Detected Apple Silicon. CDK builds linux/amd64 via QEMU — expect 30-60 min."
-    warn "For faster builds, run deploy.sh from a linux/amd64 host, or use the CI pipeline."
-  fi
-
-  info "Deploying all stacks (Network → Data → Auth → Compute)..."
-  info "CDK will build + push the container image during the Compute stack deploy."
+  info "Deploying all stacks (Network → Data → Auth → Gateway → Compute)..."
+  info "No image build — ECS pulls the unmodified official Open WebUI image by digest."
   CDK_DEFAULT_ACCOUNT="$ACCOUNT_ID" CDK_DEFAULT_REGION="$AWS_REGION" \
     $CDK deploy --all --require-approval "$([ "$SKIP_CONFIRM" = "true" ] && echo never || echo broadening)"
   log "CDK deploy complete"
@@ -603,7 +582,7 @@ echo -e "  ${GREEN}Cognito Domain:${NC}     ${BOLD}https://$COGNITO_DOMAIN_OUT (
 echo -e "  ${GREEN}ECS Cluster:${NC}        ${BOLD}open-webui-cluster${NC}"
 echo -e "  ${GREEN}ECS Service:${NC}        ${BOLD}$SERVICE_NAME${NC}"
 if [[ -n "$APP_IMAGE_URI" ]]; then
-echo -e "  ${GREEN}Image URI:${NC}          ${BOLD}$APP_IMAGE_URI${NC}"
+echo -e "  ${GREEN}Image (official):${NC}   ${BOLD}$APP_IMAGE_URI${NC}"
 fi
 echo ""
 echo -e "  ${CYAN}Quick commands:${NC}"
