@@ -1,0 +1,16 @@
+# Add BEDROCK_API_BASE_URL constant
+# Modifies: src/lib/constants.ts from Open WebUI v0.10.2 (https://github.com/open-webui/open-webui)
+# Upstream code © Open WebUI Inc., Open WebUI License (see THIRD-PARTY-LICENSES.md).
+# Added lines: Copyright Amazon.com, Inc. or its affiliates. SPDX-License-Identifier: MIT-0
+diff --git a/src/lib/constants.ts b/src/lib/constants.ts
+index b25ec0f84..d63ef9f42 100644
+--- a/src/lib/constants.ts
++++ b/src/lib/constants.ts
+@@ -9,6 +9,7 @@ export const WEBUI_API_BASE_URL = `${WEBUI_BASE_URL}/api/v1`;
+ 
+ export const OLLAMA_API_BASE_URL = `${WEBUI_BASE_URL}/ollama`;
+ export const OPENAI_API_BASE_URL = `${WEBUI_BASE_URL}/openai`;
++export const BEDROCK_API_BASE_URL = `${WEBUI_BASE_URL}/api/v1/bedrock`;
+ export const AUDIO_API_BASE_URL = `${WEBUI_BASE_URL}/api/v1/audio`;
+ export const IMAGES_API_BASE_URL = `${WEBUI_BASE_URL}/api/v1/images`;
+ export const RETRIEVAL_API_BASE_URL = `${WEBUI_BASE_URL}/api/v1/retrieval`;

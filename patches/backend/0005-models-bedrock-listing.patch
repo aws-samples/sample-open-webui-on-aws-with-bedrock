@@ -1,0 +1,53 @@
+# List Bedrock models alongside openai/ollama in get_all_base_models
+# Modifies: backend/open_webui/utils/models.py from Open WebUI v0.10.2 (https://github.com/open-webui/open-webui)
+# Upstream code © Open WebUI Inc., Open WebUI License (see THIRD-PARTY-LICENSES.md).
+# Added lines: Copyright Amazon.com, Inc. or its affiliates. SPDX-License-Identifier: MIT-0
+diff --git a/backend/open_webui/utils/models.py b/backend/open_webui/utils/models.py
+index 39e139b05..d2de97ccf 100644
+--- a/backend/open_webui/utils/models.py
++++ b/backend/open_webui/utils/models.py
+@@ -17,7 +17,9 @@ from open_webui.models.functions import Functions
+ from open_webui.models.groups import Groups
+ from open_webui.models.models import Models
+ from open_webui.models.users import UserModel
+-from open_webui.routers import ollama, openai
++
++# AWS sample: `bedrock` router provides fetch_bedrock_models / get_all_models.
++from open_webui.routers import ollama, openai, bedrock
+ from open_webui.socket.utils import RedisDict
+ from open_webui.utils.access_control import has_access, has_base_model_access
+ from open_webui.utils.plugin import (
+@@ -52,15 +54,30 @@ async def fetch_openai_models(request: Request, user: UserModel = None):
+     return openai_response['data']
+ 
+ 
++async def fetch_bedrock_models(request: Request, user: UserModel = None):
++    """Fetch Bedrock models via the Bedrock router's get_all_models."""
++    try:
++        # v0.10 port: bedrock.get_all_models is now async (reads per-key Config).
++        models = await bedrock.get_all_models(request)
++        return models
++    except Exception as e:
++        log.error(f'Error fetching Bedrock models: {e}')
++        return []
++
++
+ async def get_all_base_models(request: Request, user: UserModel = None):
+-    config = await Config.get_many('openai.enable', 'ollama.enable')
++    config = await Config.get_many('openai.enable', 'ollama.enable', 'bedrock.enable')
+     openai_task = fetch_openai_models(request, user) if config.get('openai.enable') else asyncio.sleep(0, result=[])
+     ollama_task = fetch_ollama_models(request, user) if config.get('ollama.enable') else asyncio.sleep(0, result=[])
++    # AWS sample: Bedrock provider — gated on the same per-key config as openai/ollama.
++    bedrock_task = fetch_bedrock_models(request, user) if config.get('bedrock.enable') else asyncio.sleep(0, result=[])
+     function_task = get_function_models(request)
+ 
+-    openai_models, ollama_models, function_models = await asyncio.gather(openai_task, ollama_task, function_task)
++    openai_models, ollama_models, bedrock_models, function_models = await asyncio.gather(
++        openai_task, ollama_task, bedrock_task, function_task
++    )
+ 
+-    return function_models + openai_models + ollama_models
++    return function_models + openai_models + ollama_models + bedrock_models
+ 
+ 
+ async def get_all_models(request, refresh: bool = False, user: UserModel = None):

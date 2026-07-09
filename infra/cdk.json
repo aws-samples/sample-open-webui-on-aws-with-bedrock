@@ -1,0 +1,15 @@
+{
+  "app": "npx ts-node --prefer-ts-exts bin/app.ts",
+  "watch": {
+    "include": ["**"],
+    "exclude": ["README.md", "cdk*.json", "**/*.d.ts", "**/*.js", "tsconfig.json", "package*.json", "node_modules"]
+  },
+  "context": {
+    "@aws-cdk/aws-lambda:recognizeLayerVersion": true,
+    "@aws-cdk/core:checkSecretUsage": true,
+    "@aws-cdk/core:enablePartitionLiterals": true,
+    "@aws-cdk-containers/ecs-service-extensions:enableDefaultLogDriver": true,
+    "@aws-cdk/core:target-partitions": ["aws", "aws-cn"],
+    "_comment_cloudfrontPrefixListId": "The CloudFront origin-facing managed prefix list (com.amazonaws.global.cloudfront.origin-facing) has a REGION-SPECIFIC id. By default the network stack resolves it with a context lookup at synth time (requires credentials). For credential-free synth/CI, pass the id for YOUR region explicitly: `-c cloudfrontPrefixListId=pl-...` (find it: aws ec2 describe-managed-prefix-lists --filters Name=prefix-list-name,Values=com.amazonaws.global.cloudfront.origin-facing)."
+  }
+}

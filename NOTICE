@@ -1,0 +1,28 @@
+sample-open-webui-on-aws-with-bedrock
+Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+
+This AWS deployment sample is licensed under the MIT-0 License (see LICENSE).
+The MIT-0 license applies only to the original AWS-authored code and
+documentation in this repository.
+
+This sample deploys Open WebUI (https://github.com/open-webui/open-webui),
+a third-party project by Open WebUI Inc., which is NOT included in this
+repository and is NOT covered by this repository's license. Open WebUI is
+distributed under the "Open WebUI License", a BSD-3-Clause-derived license
+that additionally restricts altering or removing "Open WebUI" branding in
+most deployments (see THIRD-PARTY-LICENSES.md for the full text). This
+sample obtains Open WebUI at build/deploy time from its official
+distribution channels (the ghcr.io/open-webui/open-webui container image
+and/or the pinned upstream source release), deploys it with UNMODIFIED
+branding, and does not redistribute or relicense it.
+
+The files under patches/ are modifications authored by Amazon Web Services
+for use against a pinned Open WebUI release. The added lines are licensed
+MIT-0; quoted upstream context lines within the diffs remain the property
+of their respective copyright holders under the Open WebUI License and are
+reproduced solely to identify the location of the modifications.
+
+Deployment note: the Open WebUI License permits unmodified-branding
+deployments without additional permission. Operators who modify branding
+should review the license's branding clause (e.g., its user-count-based
+exemption) and obtain any required permissions from Open WebUI Inc.

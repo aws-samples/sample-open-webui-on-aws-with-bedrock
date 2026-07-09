@@ -1,0 +1,29 @@
+# Environment / deployment state (never commit)
+.env
+infra/cdk.context.json
+infra/deploy.config.json
+
+# Node
+node_modules/
+infra/cdk.out/
+cdk.out/
+
+# Compiled infra output
+infra/*.js
+infra/*.d.ts
+infra/bin/*.js
+infra/bin/*.d.ts
+infra/lib/*.js
+infra/lib/*.d.ts
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Build artifacts
+dist/
+build/
+
+# OS
+.DS_Store

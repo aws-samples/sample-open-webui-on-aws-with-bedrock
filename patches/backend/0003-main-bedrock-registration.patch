@@ -1,0 +1,45 @@
+# Register the Bedrock router + model cache on the FastAPI app
+# Modifies: backend/open_webui/main.py from Open WebUI v0.10.2 (https://github.com/open-webui/open-webui)
+# Upstream code © Open WebUI Inc., Open WebUI License (see THIRD-PARTY-LICENSES.md).
+# Added lines: Copyright Amazon.com, Inc. or its affiliates. SPDX-License-Identifier: MIT-0
+diff --git a/backend/open_webui/main.py b/backend/open_webui/main.py
+index 82eed2f4d..b0e7e3e66 100644
+--- a/backend/open_webui/main.py
++++ b/backend/open_webui/main.py
+@@ -140,6 +140,7 @@ from open_webui.routers import (
+     audio,
+     auths,
+     automations,
++    bedrock,  # AWS sample: Amazon Bedrock provider router
+     calendar,
+     channels,
+     chats,
+@@ -484,6 +485,18 @@ app.state.OLLAMA_MODELS = {}
+ 
+ app.state.OPENAI_MODELS = {}
+ 
++########################################
++#
++# AMAZON BEDROCK (AWS sample)
++#
++########################################
++
++# AWS sample: Bedrock model cache, mirroring OLLAMA_MODELS / OPENAI_MODELS. Admin-
++# editable Bedrock settings (enable/region/endpoint/allowed models) live in the
++# per-key Config table (keys `bedrock.*`) and are read by routers/bedrock.py via
++# Config.get — there is no app.state.config under v0.10's config architecture.
++app.state.BEDROCK_MODELS = {}
++
+ ########################################
+ #
+ # TOOL SERVERS
+@@ -731,6 +744,9 @@ app.mount('/ws', socket_app)
+ app.include_router(ollama.router, prefix='/ollama', tags=['ollama'])
+ app.include_router(openai.router, prefix='/openai', tags=['openai'])
+ 
++# AWS sample: Amazon Bedrock provider.
++app.include_router(bedrock.router, prefix='/api/v1/bedrock', tags=['bedrock'])
++
+ 
+ app.include_router(pipelines.router, prefix='/api/v1/pipelines', tags=['pipelines'])
+ app.include_router(tasks.router, prefix='/api/v1/tasks', tags=['tasks'])
