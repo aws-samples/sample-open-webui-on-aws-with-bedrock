@@ -186,4 +186,10 @@ the foundation that makes them per-user rather than per-app.
   **Workspace → Models**.
 - **Regions.** The gateway fronts `bedrock-mantle` in the deployment region;
   `bedrock-mantle` availability is a subset of Bedrock regions — verify your
-  region before deploying.
+  region before deploying. **Which models exist is region-dependent**, and the
+  Messages (Claude) lane is the most sensitive: verified 2026-07,
+  `us-east-1` offers 5 Claude models, `us-west-2` offers 1, and `us-east-2`
+  offers **none**. If the Claude lane shows no models, the pipe is working
+  correctly — that region's `bedrock-mantle` simply has no `anthropic.*` models.
+  Deploy to `us-east-1` for the full three-lane experience, and regenerate
+  `config/model-capabilities.json` per region.

@@ -374,6 +374,24 @@ if [[ "$SKIP_CDK_BOOTSTRAP" != "true" ]]; then
   log "CDK bootstrap complete"
 fi
 
+# ── Vendor boto3 for the gateway provisioner Lambda ─────────
+# The Lambda python3.12 runtime bundles boto3 < 1.43, which does not know the
+# AgentCore "inference" gateway-target parameter. Vendor a current boto3 into
+# the provisioner asset so it can create the bedrock-mantle inference target.
+# (gitignored; installed here at deploy time.)
+if [[ "$SKIP_CDK_DEPLOY" != "true" ]]; then
+  header "Vendoring provisioner dependencies"
+  PROV_DIR="$SCRIPT_DIR/gateway/provisioner"
+  if [[ ! -d "$PROV_DIR/boto3" ]]; then
+    PIP="python3 -m pip"; command -v pip3 >/dev/null 2>&1 && PIP="pip3"
+    $PIP install --quiet --target "$PROV_DIR" -r "$PROV_DIR/requirements.txt" \
+      && log "boto3 vendored into gateway/provisioner" \
+      || { err "Failed to vendor boto3 (need python3 + pip)."; exit 1; }
+  else
+    log "provisioner boto3 already vendored"
+  fi
+fi
+
 # ── CDK Deploy ──────────────────────────────────────────────
 if [[ "$SKIP_CDK_DEPLOY" != "true" ]]; then
   header "CDK Deploy"

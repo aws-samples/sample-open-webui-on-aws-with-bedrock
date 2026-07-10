@@ -65,13 +65,7 @@ def table_exists(cur, name) -> bool:
     return cur.fetchone()[0] is not None
 
 
-def first_admin_id(cur):
-    cur.execute("SELECT id FROM \"user\" WHERE role = 'admin' ORDER BY created_at LIMIT 1")
-    row = cur.fetchone()
-    return row[0] if row else None
-
-
-def upsert_pipe(cur, admin_id, content) -> str:
+def upsert_pipe(cur, content) -> str:
     now = int(time.time())
     meta = {"description": "Anthropic Claude models via the AgentCore inference gateway (per-user OAuth).", "manifest": {}}
     valves = {}  # pipe reads GATEWAY_INFERENCE_URL / MANTLE_REGION from the task env; SigV4 fallback OFF by default
@@ -79,13 +73,20 @@ def upsert_pipe(cur, admin_id, content) -> str:
     if cur.fetchone():
         cur.execute("UPDATE function SET content = %s, updated_at = %s WHERE id = %s", (content, now, FUNCTION_ID))
         return "pipe updated (content only)"
+    # Owner: prefer the first admin if one exists yet, else a placeholder ("system").
+    # function.user_id is a plain string column (no FK), and is_global=true makes the
+    # pipe visible to everyone regardless of owner — so we DON'T block on an admin
+    # signing in. Seeding at first boot is what makes the models appear immediately.
+    cur.execute("SELECT id FROM \"user\" WHERE role = 'admin' ORDER BY created_at LIMIT 1")
+    row = cur.fetchone()
+    owner = row[0] if row else "system"
     cur.execute(
         """INSERT INTO function (id, user_id, name, type, content, meta, created_at,
                                  updated_at, valves, is_active, is_global)
            VALUES (%s, %s, %s, 'pipe', %s, %s, %s, %s, %s, true, true)""",
-        (FUNCTION_ID, admin_id, "Claude (Bedrock)", content, json.dumps(meta), now, now, json.dumps(valves)),
+        (FUNCTION_ID, owner, "Claude (Bedrock)", content, json.dumps(meta), now, now, json.dumps(valves)),
     )
-    return "pipe inserted"
+    return f"pipe inserted (owner={owner})"
 
 
 def _cfg_get(cur, key, default):
@@ -170,12 +171,8 @@ def main():
                     continue
 
                 if not pipe_done:
-                    admin = first_admin_id(cur)
-                    if not admin:
-                        log.info("no admin user yet; waiting for first sign-up")
-                    else:
-                        log.info(upsert_pipe(cur, admin, content))
-                        pipe_done = True
+                    log.info(upsert_pipe(cur, content))
+                    pipe_done = True
 
                 if not conns_done and table_exists(cur, "config"):
                     log.info(seed_connections(cur))

@@ -111,7 +111,13 @@ with [`scripts/probe-model-capabilities.py`](scripts/probe-model-capabilities.py
 - CDK bootstrapped in your target account/region (`npx cdk bootstrap`), or let
   `deploy.sh` do it.
 - A region where both Amazon Bedrock (`bedrock-mantle`) and CloudFront VPC
-  origins are available (e.g. `us-east-1`, `us-east-2`, `us-west-2`).
+  origins are available. **Model availability on `bedrock-mantle` is
+  region-dependent** — notably Anthropic Claude (the Messages lane) is offered
+  in **`us-east-1`** (and partially `us-west-2`) but **not `us-east-2`** as of
+  2026-07. Deploy to **`us-east-1`** for the full three-lane experience; other
+  regions serve whatever their `bedrock-mantle` catalog includes. Regenerate
+  [`config/model-capabilities.json`](config/model-capabilities.json) for your
+  region with [`scripts/probe-model-capabilities.py`](scripts/probe-model-capabilities.py).
 
 ## Quick start
 

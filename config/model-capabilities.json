@@ -1,5 +1,5 @@
 {
-  "_comment": "Mantle model capability matrix by OpenAI-compatible API. The gateway models-filter interceptor filters /v1/models to these lists so Open WebUI only surfaces models that actually work on each connection's API. Regenerate for your region/account with scripts/probe-model-capabilities.py; account-gated models are excluded. This snapshot: us-east-1, verified 2026-07-09.",
+  "_comment": "Mantle model capability matrix by OpenAI-compatible API for a SPECIFIC region (see 'region'). Model availability on bedrock-mantle is region-dependent \u2014 notably Anthropic Claude (the 'messages' lane) is present in us-east-1 (5 models) and us-west-2 (1) but NOT us-east-2 as of 2026-07. The gateway interceptor filters /v1/models to these lists so Open WebUI only surfaces models that actually work per connection. Regenerate for your region with scripts/probe-model-capabilities.py; account-gated models are excluded. Snapshot: us-east-1, verified 2026-07-09.",
   "region": "us-east-1",
   "chat_completions": [
     "deepseek.v3.1",

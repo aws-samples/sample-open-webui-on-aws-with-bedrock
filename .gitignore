@@ -27,3 +27,16 @@ build/
 
 # OS
 .DS_Store
+
+# Vendored boto3 for the gateway provisioner Lambda (installed at deploy time;
+# the runtime's bundled boto3 is too old for inference targets). See
+# gateway/provisioner/requirements.txt.
+gateway/provisioner/boto3*/
+gateway/provisioner/botocore*/
+gateway/provisioner/s3transfer*/
+gateway/provisioner/jmespath*/
+gateway/provisioner/dateutil*/
+gateway/provisioner/python_dateutil*/
+gateway/provisioner/urllib3*/
+gateway/provisioner/six*
+gateway/provisioner/bin/
