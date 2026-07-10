@@ -1,9 +1,0 @@
-# Keep the Docker build context minimal: the overlay Dockerfile only needs
-# patches/ and overlay/. Everything else is excluded — this also keeps the CDK
-# DockerImageAsset hash stable (docs/infra edits don't force an image rebuild)
-# and prevents recursive copying of infra/cdk.out into the asset staging dir.
-*
-!Dockerfile
-!.dockerignore
-!patches/
-!overlay/

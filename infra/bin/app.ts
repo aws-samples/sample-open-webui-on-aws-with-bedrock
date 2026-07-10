@@ -8,9 +8,9 @@ import * as path from 'path';
 import { NetworkStack } from '../lib/network-stack';
 import { DataStack } from '../lib/data-stack';
 import { AuthStack } from '../lib/auth-stack';
+import { GatewayStack } from '../lib/gateway-stack';
 import { ComputeStack } from '../lib/compute-stack';
 import { EnvironmentConfig, getDevConfig, getProdConfig } from '../lib/environment-config';
-import { PipelineStack } from '../lib/pipeline-stack';
 
 const app = new cdk.App();
 
@@ -64,15 +64,6 @@ const cognitoDomainPrefix = envConfig
   ? `open-webui-${envConfig.environment}-${process.env.CDK_DEFAULT_ACCOUNT}`
   : `open-webui-${process.env.CDK_DEFAULT_ACCOUNT}`;
 
-// Container image selection: -c imageSource=build|registry, -c imageTarget=backend|full,
-// -c imageRegistry=<ecr repo name>, -c imageTag=<tag> (all optional; see environment-config.ts)
-const imageConfig = {
-  source: (getConfig('imageSource') as 'build' | 'registry' | undefined) ?? envConfig?.image?.source,
-  registry: getConfig('imageRegistry') ?? envConfig?.image?.registry,
-  tag: getConfig('imageTag') ?? envConfig?.image?.tag,
-  target: (getConfig('imageTarget') as 'backend' | 'full' | undefined) ?? envConfig?.image?.target,
-};
-
 // Network Stack
 const networkStack = new NetworkStack(app, `${prefix}Network`, { env });
 
@@ -99,6 +90,16 @@ const authStack = new AuthStack(app, `${prefix}Auth`, {
   cognitoDomainPrefix,
 });
 
+// Gateway Stack — AgentCore inference gateway fronting bedrock-mantle, trusting
+// the Auth stack's Cognito pool for per-user (system_oauth) model access.
+const gatewayStack = new GatewayStack(app, `${prefix}Gateway`, {
+  env,
+  userPool: authStack.userPool,
+  userPoolClient: authStack.userPoolClient,
+  environmentPrefix: envConfig?.environment,
+});
+gatewayStack.addDependency(authStack);
+
 // Compute Stack
 const computeStack = new ComputeStack(app, `${prefix}Compute`, {
   env,
@@ -118,30 +119,10 @@ const computeStack = new ComputeStack(app, `${prefix}Compute`, {
   ecsMaxCapacity: envConfig?.ecsMaxCapacity,
   enableAutoScaling: envConfig?.enableAutoScaling,
   environmentPrefix: envConfig?.environment,
-  image: imageConfig,
+  gatewayInferenceUrl: gatewayStack.gatewayInferenceUrl,
 });
 computeStack.addDependency(dataStack);
 computeStack.addDependency(authStack);
-
-// Pipeline Stack — deployed independently via: cdk deploy -c pipeline=true
-const deployPipeline = app.node.tryGetContext('pipeline');
-if (deployPipeline) {
-  const connectionArn = getConfig('connectionArn');
-  if (!connectionArn) {
-    throw new Error('Pipeline requires connectionArn context value');
-  }
-  new PipelineStack(app, 'OpenWebUI-Pipeline', {
-    env,
-    connectionArn,
-    repoOwner: getConfig('repoOwner') ?? 'aws-samples',
-    repoName: getConfig('repoName') ?? 'sample-open-webui-on-aws-with-bedrock',
-    approvalEmail: getConfig('approvalEmail'),
-    devUrl: getConfig('devUrl'),
-    devDomainName: getConfig('devDomainName'),
-    devCertificateArn: getConfig('devCertificateArn'),
-    prodDomainName: getConfig('prodDomainName'),
-    prodCertificateArn: getConfig('prodCertificateArn'),
-  });
-}
+computeStack.addDependency(gatewayStack);
 
 app.synth();

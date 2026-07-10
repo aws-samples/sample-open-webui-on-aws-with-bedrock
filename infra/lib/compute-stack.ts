@@ -17,9 +17,16 @@ import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import * as path from 'path';
 import { Construct } from 'constructs';
-import * as ecr from 'aws-cdk-lib/aws-ecr';
-import { BedrockAccessConstruct } from './bedrock-access-construct';
-import { ImageConfig } from './environment-config';
+import { Asset } from 'aws-cdk-lib/aws-s3-assets';
+
+/**
+ * The official Open WebUI image, pinned by digest (v0.10.2). This sample runs
+ * the upstream image completely unmodified — the Amazon Bedrock integration is
+ * delivered at runtime as an Open WebUI pipe function + OpenAI connections that
+ * point at the AgentCore inference gateway. No fork, no patches, no image build.
+ * Bump per docs/UPGRADE_RUNBOOK.md.
+ */
+const OFFICIAL_IMAGE = 'ghcr.io/open-webui/open-webui@sha256:9fcea9c6e32ab60b0498f3986c6cdf651ddbe61db48d2213a3d28048ddd673d4';
 
 export interface ComputeStackProps extends cdk.StackProps {
   vpc: ec2.Vpc;
@@ -43,16 +50,10 @@ export interface ComputeStackProps extends cdk.StackProps {
   enableAutoScaling?: boolean;
   /** Environment name for resource name prefixing (e.g., "dev", "prod"). Undefined for backward compat. */
   environmentPrefix?: string;
-  /**
-   * Container image selection.
-   *  - source 'build' (default): CDK builds this repo's overlay Dockerfile
-   *    (official Open WebUI + Bedrock provider) with the chosen target.
-   *  - source 'registry': escape hatch pulling a PREBUILT overlay image from
-   *    the operator's own registry (e.g. your ECR). Note: the official
-   *    ghcr.io image alone has no Bedrock router — point this at an image you
-   *    built from this repo's Dockerfile, not at ghcr.io.
-   */
-  image?: ImageConfig;
+  /** AgentCore inference gateway base URL (…/inference), from the GatewayStack output. */
+  gatewayInferenceUrl: string;
+  /** Region whose bedrock-mantle endpoint backs the gateway (for the Claude pipe's discovery). */
+  mantleRegion?: string;
 }
 
 export class ComputeStack extends cdk.Stack {
@@ -77,45 +78,11 @@ export class ComputeStack extends cdk.Stack {
     const enableAutoScaling = props.enableAutoScaling ?? true;
 
     // =====================
-    // Container Image
-    //
-    // Two modes (props.image.source, default 'build'):
-    //
-    //  'build' — DockerImageAsset on this repo's overlay Dockerfile. CDK:
-    //   1. Hashes the build context (Dockerfile + repo files, minus .dockerignore excludes)
-    //   2. Builds the image locally (docker build --target <backend|full>) if
-    //      the hash isn't already in the CDK asset ECR
-    //   3. Pushes it to the CDK bootstrap-managed asset repo
-    //   4. Wires the resulting immutable digest into the ECS task definition
-    //
-    //  'registry' — escape hatch for operators who prebuild the overlay image
-    //   (e.g. in CI) and push it to their own ECR repo. The image MUST have
-    //   been built from this repo's Dockerfile: the official upstream image
-    //   alone has no Bedrock provider.
+    // Container Image — unmodified official Open WebUI, pinned by digest.
+    // No Docker build anywhere; the Bedrock integration is seeded at runtime.
     // =====================
-    const imageConfig = props.image ?? {};
-    const imageSource = imageConfig.source ?? 'build';
-    const imageTarget = imageConfig.target ?? 'backend';
-
-    let containerImage: ecs.ContainerImage;
-    let imageUriForOutput: string;
-    if (imageSource === 'registry') {
-      if (!imageConfig.registry) {
-        throw new Error("image.source 'registry' requires image.registry (an ECR repository name or URI holding YOUR prebuilt overlay image)");
-      }
-      const tag = imageConfig.tag ?? 'latest';
-      const repo = ecr.Repository.fromRepositoryName(this, 'AppImageRepo', imageConfig.registry);
-      containerImage = ecs.ContainerImage.fromEcrRepository(repo, tag);
-      imageUriForOutput = `${repo.repositoryUri}:${tag}`;
-    } else {
-      const appImage = new DockerImageAsset(this, 'AppImage', {
-        directory: path.join(__dirname, '..', '..'),
-        platform: Platform.LINUX_AMD64,
-        target: imageTarget,
-      });
-      containerImage = ecs.ContainerImage.fromDockerImageAsset(appImage);
-      imageUriForOutput = appImage.imageUri;
-    }
+    const containerImage = ecs.ContainerImage.fromRegistry(OFFICIAL_IMAGE);
+    const imageUriForOutput = OFFICIAL_IMAGE;
 
     // =====================
     // Secrets Manager
@@ -152,8 +119,15 @@ export class ComputeStack extends cdk.Stack {
       assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
     });
 
-    const bedrockAccess = new BedrockAccessConstruct(this, 'BedrockAccess');
-    bedrockAccess.policyStatements.forEach((stmt) => taskRole.addToPolicy(stmt));
+    // The Claude pipe discovers models by listing bedrock-mantle (SigV4, task
+    // role) since Open WebUI's pipe discovery hook runs with no user context.
+    // Actual inference goes through the gateway with the USER's OAuth token, so
+    // the task role needs only the read/list surface here — not broad invoke.
+    // bedrock-mantle is its own IAM service prefix (not plain bedrock:*).
+    taskRole.addToPolicy(new iam.PolicyStatement({
+      actions: ['bedrock-mantle:Get*', 'bedrock-mantle:List*', 'bedrock-mantle:CallWithBearerToken'],
+      resources: ['*'],
+    }));
     uploadBucket.grantReadWrite(taskRole);
     webuiSecret.grantRead(taskRole);
     cognitoClientSecret.grantRead(taskRole);
@@ -173,6 +147,26 @@ export class ComputeStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
+    // Bedrock integration is delivered at container start: the seeder downloads
+    // the Claude pipe + its installer (python + boto3 are already in the
+    // official image) and runs it in the background. The installer waits for
+    // DB migrations + the first admin sign-up, then upserts the pipe function
+    // and the two OpenAI connections (chat_completions + responses) that point
+    // at the gateway. Idempotent; never blocks or crashes app start.
+    const pipeAsset = new Asset(this, 'ClaudePipeAsset', {
+      path: path.join(__dirname, '..', '..', 'pipe', 'gateway_anthropic_pipe.py'),
+    });
+    const seedAsset = new Asset(this, 'SeedAsset', {
+      path: path.join(__dirname, '..', '..', 'pipe', 'seed.py'),
+    });
+    pipeAsset.grantRead(taskRole);
+    seedAsset.grantRead(taskRole);
+    const pipeBootstrap =
+      `(python -c "import boto3; s3 = boto3.client('s3'); ` +
+      `s3.download_file('${pipeAsset.s3BucketName}', '${pipeAsset.s3ObjectKey}', '/tmp/gateway_anthropic_pipe.py'); ` +
+      `s3.download_file('${seedAsset.s3BucketName}', '${seedAsset.s3ObjectKey}', '/tmp/seed.py')" && ` +
+      `(python /tmp/seed.py >/proc/1/fd/1 2>&1 &)) ; `;
+
     taskDefinition.addContainer('OpenWebUI', {
       image: containerImage,
       logging: ecs.LogDrivers.awsLogs({ streamPrefix: 'open-webui', logGroup }),
@@ -182,7 +176,9 @@ export class ComputeStack extends cdk.Stack {
       // password rather than baked into the image. The generated password is
       // URL-safe (see data-stack.ts excludeCharacters).
       command: ['/bin/sh', '-lc',
-        'export DATABASE_URL="postgresql://${DATABASE_USER}:${DATABASE_PASSWORD}@${DATABASE_HOST}:${DATABASE_PORT}/${DATABASE_NAME}" && exec bash start.sh'],
+        'export DATABASE_URL="postgresql://${DATABASE_USER}:${DATABASE_PASSWORD}@${DATABASE_HOST}:${DATABASE_PORT}/${DATABASE_NAME}" && ' +
+        pipeBootstrap +
+        'exec bash start.sh'],
       environment: {
         WEBUI_URL: '',
         PORT: '8080',
@@ -243,9 +239,12 @@ export class ComputeStack extends cdk.Stack {
             return `https://${userPoolDomainName}/logout?client_id=${userPoolClient.userPoolClientId}&logout_uri=https://${appHost}/auth`;
           },
         }),
-        ENABLE_BEDROCK_API: 'true',
-        BEDROCK_REGION: cdk.Aws.REGION,
         ENABLE_OLLAMA_API: 'false',
+        // The Bedrock inference gateway (…/inference) and the region whose
+        // bedrock-mantle catalog it fronts. Read by the seeder to configure the
+        // OpenAI connections + the Claude pipe. Not consumed by upstream itself.
+        GATEWAY_INFERENCE_URL: props.gatewayInferenceUrl,
+        MANTLE_REGION: props.mantleRegion ?? cdk.Aws.REGION,
         // Single-SSO deployment — skip Open WebUI's local login form and go
         // straight to the Cognito hosted UI. Auto-redirect only fires when the
         // local login form is disabled (auth/+page.svelte gates on

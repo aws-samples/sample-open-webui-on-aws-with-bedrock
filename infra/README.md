@@ -6,16 +6,13 @@ AWS CDK (TypeScript) infrastructure for deploying Open WebUI on Amazon ECS with 
 
 | Stack | Resources | Description |
 |---|---|---|
-| `OpenWebUI-Network` | VPC, subnets, NAT, VPC endpoints, security groups | Isolated network with private subnets and endpoints for S3, ECR, Bedrock, CloudWatch, Secrets Manager |
+| `OpenWebUI-Network` | VPC, subnets, NAT, VPC endpoints, security groups | Isolated network with private subnets and endpoints for S3, CloudWatch, Secrets Manager |
 | `OpenWebUI-Data` | Aurora PostgreSQL Serverless v2, ElastiCache Redis, S3 | Auto-scaling database (0.5–8 ACU), Redis with TLS (CfnReplicationGroup), file storage |
 | `OpenWebUI-Auth` | Cognito User Pool, client, domain, groups | SSO authentication with admin/user/power-users/basic-users groups |
-| `OpenWebUI-Compute` | ECS Fargate, internal ALB, CloudFront VPC origin, Secrets Manager | Container compute (1–10 tasks), HTTPS via CloudFront, credential management |
+| `OpenWebUI-Gateway` | AgentCore inference gateway, models-filter interceptor Lambda, inference-target custom resource, gateway execution role | Per-user (Cognito JWT) inference endpoint fronting `bedrock-mantle`; see [`GATEWAY_INTEGRATION_GUIDE.md`](../docs/GATEWAY_INTEGRATION_GUIDE.md) |
+| `OpenWebUI-Compute` | ECS Fargate, internal ALB, CloudFront VPC origin, Secrets Manager | Container compute (1–10 tasks) running the unmodified official image, HTTPS via CloudFront, credential management |
 
-**Dependency order:** Network → Data + Auth (parallel) → Compute
-
-### Supporting Construct
-
-- `BedrockAccessConstruct` — IAM policies for Bedrock Converse API, inference profile discovery, and cross-region invocation.
+**Dependency order:** Network → Data + Auth (parallel), Auth → Gateway → Compute
 
 ## Quick Start
 
@@ -32,30 +29,16 @@ Or use the automated deploy script from the repo root:
 ./deploy.sh --profile YOUR_PROFILE
 ```
 
-## Container image selection
+## Container image
 
-The Compute stack supports two image modes (context keys or `environment-config.ts`):
-
-- **`imageSource=build` (default)** — CDK builds the repo-root overlay Dockerfile
-  (official Open WebUI pinned release + the Bedrock provider) as a
-  `DockerImageAsset` at deploy time and pushes it to the CDK asset repo.
-  Choose the Dockerfile target with `-c imageTarget=backend` (default; official
-  UI unchanged) or `-c imageTarget=full` (rebuilds the UI with the admin
-  Connections Bedrock panel — slower build).
-- **`imageSource=registry`** — escape hatch pulling a **prebuilt overlay image
-  from your own ECR repo** (`-c imageRegistry=<repo-name> -c imageTag=<tag>`).
-  Note the semantics: the official ghcr.io image alone has **no Bedrock
-  provider** — point this at an image you built from this repo's Dockerfile
-  (e.g. in CI), not at ghcr.io directly.
-
-```bash
-# Example: deploy the full target
-npx cdk deploy --all -c environment=dev -c imageTarget=full
-
-# Example: deploy a prebuilt image from your ECR
-npx cdk deploy --all -c environment=dev -c imageSource=registry \
-  -c imageRegistry=my-openwebui-overlay -c imageTag=v0.10.2-bedrock
-```
+The Compute stack runs the **unmodified official Open WebUI image**, pinned by
+digest in the `OFFICIAL_IMAGE` constant at the top of
+[`lib/compute-stack.ts`](lib/compute-stack.ts) (currently v0.10.2). There is no
+image build — ECS pulls the image straight from `ghcr.io/open-webui/open-webui`.
+The Amazon Bedrock integration is the Gateway stack plus a pipe function and two
+OpenAI connections seeded into the app at container start (see
+[`../pipe/`](../pipe/)). Move the pin with
+[`../docs/UPGRADE_RUNBOOK.md`](../docs/UPGRADE_RUNBOOK.md).
 
 ## Configuration
 

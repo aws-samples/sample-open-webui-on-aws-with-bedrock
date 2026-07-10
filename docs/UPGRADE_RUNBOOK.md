@@ -1,181 +1,158 @@
 # Open WebUI Upstream Upgrade Runbook
 
-Repeatable process for bumping this sample's pinned upstream Open WebUI release
-while preserving the Bedrock provider and AWS deployment customizations.
+Repeatable process for bumping this sample's pinned upstream Open WebUI release.
 
 ## How this sample tracks upstream
 
-This repository is **not a fork** — it never vendors upstream source. The
-deployed application is the official `ghcr.io/open-webui/open-webui` image at a
-pinned tag, extended at Docker-build time by:
+This repository vendors **no upstream source** and builds **no image**. The
+deployed application is the **completely unmodified official Open WebUI image**,
+pinned by digest and pulled from `ghcr.io/open-webui/open-webui` at deploy time.
+The Amazon Bedrock integration is delivered entirely as AWS infrastructure +
+runtime configuration — an
+[AgentCore inference gateway](GATEWAY_INTEGRATION_GUIDE.md)
+plus a small [Claude pipe](../pipe/gateway_anthropic_pipe.py) and two OpenAI
+connections that [`pipe/seed.py`](../pipe/seed.py) writes into the app database
+at container start.
 
-- **3 overlay files** (new code, copied in): `overlay/backend/open_webui/routers/bedrock.py`,
-  `overlay/backend/open_webui/utils/bedrock.py`, and (full target only)
-  `overlay/src/lib/apis/bedrock/index.ts`.
-- **7 patches** (small attributed diffs applied to upstream files):
-  5 backend (`patches/backend/`) + 2 frontend (`patches/frontend/`, full target
-  only). See `patches/README.md` for the per-patch inventory.
+So "upgrading" is just **moving the pin**. There is no source to vendor, no
+diffs to re-apply, no image to build, and no database migration chain to
+maintain — the app carries its own schema and applies its own migrations on
+start. The only real risk is that an upstream release changes something the
+seeder or the pipe depends on; step 2 covers exactly what to check.
 
-That set — **7 patches + 3 overlay files** — is the entire upgrade surface.
-The sample ships **zero alembic migrations and zero Python dependency
-changes**, so there is no migration chain or requirements file to maintain
-across bumps.
+The current pin is **v0.10.2** (2026-07-01), a release with upstream security
+and access-control fixes — pin at or above it.
 
-## Why the current pin is v0.10.2
+## 1. Bump the pinned image
 
-Upstream's v0.10.2 release (2026-07-01) contains a **security advisory**
-("security and access-control fixes… update production deployments at your
-earliest convenience") — pin at or above it.
+The digest lives in **exactly one code location**: the `OFFICIAL_IMAGE` constant
+near the top of [`infra/lib/compute-stack.ts`](../infra/lib/compute-stack.ts).
 
-v0.10.2 also ships **database schema changes** with an upstream warning against
-rolling updates: do not run old and new application versions against the same
-database simultaneously while upgrading. Irrelevant for fresh installs; for an
-existing deployment, stop the old tasks (or accept the ECS rolling window is
-brief) and take a DB snapshot before bumping across it.
-
-## Phase 1 — Analyze (read-only)
-
-Check what the new tag changes in the 7 patched files:
+Pick the new upstream **release tag** (`vX.Y.Z`, **not** `main`) and resolve its
+**multi-arch (index) digest**:
 
 ```bash
-git clone https://github.com/open-webui/open-webui /tmp/owui && cd /tmp/owui
-git diff v0.10.2 vNEW --stat -- \
-  backend/open_webui/config.py backend/open_webui/env.py backend/open_webui/main.py \
-  backend/open_webui/utils/chat.py backend/open_webui/utils/models.py \
-  src/lib/components/admin/Settings/Connections.svelte src/lib/constants.ts
+# With Docker/buildx available:
+docker buildx imagetools inspect ghcr.io/open-webui/open-webui:vX.Y.Z
+# → read the "Digest:" of the manifest list (the sha256 for the tag itself).
 ```
 
-Also read the release notes for: security advisories, DB schema changes (and
-any no-rolling-update warnings), and changes to provider dispatch or model
-listing (`utils/chat.py` / `utils/models.py` are the highest-drift-risk
-targets).
-
-**Decision point:** if upstream radically refactored `main.py`, `utils/chat.py`
-or `utils/models.py`, budget extra time — those patches may need manual
-re-anchoring rather than a clean apply.
-
-## Phase 2 — Re-apply and re-baseline the patches
+If Docker isn't available, read the digest straight from the ghcr manifest API
+with the anonymous pull-token flow (curl + jq):
 
 ```bash
-cd /tmp/owui && git checkout vNEW
+TAG=vX.Y.Z
+# 1. Anonymous pull token for the public repo:
+TOKEN=$(curl -s "https://ghcr.io/token?scope=repository:open-webui/open-webui:pull&service=ghcr.io" | jq -r .token)
 
-# 1. Check which patches still apply clean:
-OPEN_WEBUI_VERSION=vNEW /path/to/repo/docker/apply-patches.sh
-
-# 2. For each patch that applies: apply it, then re-emit so it carries the
-#    new tag's context lines and blob hashes:
-git apply /path/to/repo/patches/backend/0001-config-bedrock-defaults.patch
-git diff -- backend/open_webui/config.py > /path/to/repo/patches/backend/0001-config-bedrock-defaults.patch
-git checkout -- backend/open_webui/config.py
-# ... repeat per patch; restore each patch's 4-line attribution preamble
-#     (git ignores preamble text before the first 'diff --git' line).
-
-# 3. For each patch that FAILS: open the rejected hunks, re-anchor the same
-#    added lines onto the new upstream code by hand, then re-emit as above.
+# 2. HEAD the manifest and read the digest from the response header:
+curl -sI \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Accept: application/vnd.oci.image.index.v1+json" \
+  -H "Accept: application/vnd.docker.distribution.manifest.list.v2+json" \
+  "https://ghcr.io/v2/open-webui/open-webui/manifests/$TAG" \
+  | tr -d '\r' | awk -F': ' 'tolower($1)=="docker-content-digest"{print $2}'
+# → sha256:… — this is the same index digest buildx would report.
 ```
 
-Never regenerate patches by diffing a fork tree against upstream — re-apply
-the existing scoped patches and re-emit, so upstream's own changes between
-tags are not accidentally reverted.
+Update the pin to the resolved digest, then refresh **every version reference**:
 
-### Overlay-file drift
+```
+infra/lib/compute-stack.ts   OFFICIAL_IMAGE = 'ghcr.io/open-webui/open-webui@sha256:…'
+                             (and the "(v0.10.2)" note in its doc comment)
+README.md                    the "(currently vX.Y.Z)" / "pin is vX.Y.Z" mentions
+docs/UPGRADE_RUNBOOK.md       this file's "current pin" line
+```
 
-The overlay modules call upstream internals (`Config.get/upsert`,
-`Models.get_model_by_id`, `utils.payload` helpers). After a bump, check the
-release notes/diff for signature changes to those, and remember upstream has a
-history of **converting sync table helpers to async without warning** —
-un-awaited calls surface as `'coroutine' object has no attribute ...` at
-runtime, not at import. `scripts/upgrade/verify.sh` greps the overlay files
-for un-awaited table calls.
+Pin by **digest**, not by tag — the digest is what ECS actually pulls, and it's
+immutable.
 
-## Phase 3 — Update the pin everywhere
+## 2. Check for breaking changes that affect the integration
 
-- `Dockerfile`: `ARG OPEN_WEBUI_VERSION=vNEW` + refresh the recorded index
-  digest (`docker buildx imagetools inspect ghcr.io/open-webui/open-webui:vNEW`)
-- `docker/apply-patches.sh`: default `OPEN_WEBUI_VERSION`
-- `patches/README.md`, `README.md`, this file: version references
-- `scripts/upgrade/fork-manifest.json`: `pinned_upstream_tag`
+Because the app is unmodified, the **only** things an upstream release can break
+are the surfaces this sample plugs into. Skim the release notes and diff
+`v0.10.2..vX.Y.Z` for material changes to:
 
-## Phase 4 — Verify
+- **`backend/open_webui/models/config.py`** — the seeder writes per-key rows to
+  the `config` table: `openai.api_base_urls`, `openai.api_keys`,
+  `openai.api_configs`, `openai.enable`. A schema/key-name change here breaks the
+  two OpenAI connections.
+- **`backend/open_webui/models/functions.py`** — the seeder inserts the Claude
+  pipe row into the `function` table. A schema change breaks pipe installation.
+- **`backend/open_webui/routers/openai.py`** — the OpenAI connection contract.
+  The connections rely on the `api_config` keys `prefix_id`, `model_ids`,
+  `connection_type`, `auth_type`, `headers` (the `x-models-flavor` header), and
+  `api_type` (`responses` for the `gwr` lane). If any key is renamed or its
+  semantics change, the lanes mis-route.
+- **`backend/open_webui/utils/oauth.py`** — the `auth_type: system_oauth`
+  behavior and the `oauth_manager` / `oauth_session` token path the Claude pipe
+  reads (`app.state.oauth_manager.get_oauth_token`, `OAuthSessions`, the
+  `oauth_session_id` cookie). If this path changes, the pipe can't obtain the
+  user's bearer token.
+
+If any of these changed materially, **test the seeder against a dev deploy before
+prod** (deploy the new pin to a dev environment and confirm the pipe + both
+connections install and work — see step 5). If nothing relevant changed, the
+bump is a config-only pin change.
+
+## 3. DB schema changes / no rolling old+new
+
+Upstream ships its own migrations, which run automatically on container start.
+Some releases (v0.10.2 among them) ship **schema changes with a warning against
+running old and new application versions against one database simultaneously**.
+Keep this caution for every bump:
+
+- **Snapshot the Aurora database** before deploying across a schema-changing
+  release.
+- Accept the **brief ECS rolling window**, or stop the old tasks first
+  (scale the service to 0, deploy, scale back up) so only one app version ever
+  touches the DB during the migration.
+
+Fresh installs are unaffected.
+
+## 4. (Optional) Refresh the model capability matrix
+
+New Bedrock models surface in the dropdown **only** when they're added to
+[`config/model-capabilities.json`](../config/model-capabilities.json), which is
+the gateway interceptor's input. To pick up newly available models, regenerate
+it and redeploy the Gateway stack:
 
 ```bash
-# Patches apply against a pristine clone at the new tag:
-OPEN_WEBUI_VERSION=vNEW docker/apply-patches.sh
-
-# Both image targets build and boot:
-docker build --target backend -t owui-sample:backend .
-docker build --target full    -t owui-sample:full .
-docker run -d -e WEBUI_AUTH=False -e WEBUI_SECRET_KEY=smoke -p 8081:8080 owui-sample:backend
-curl -sf http://localhost:8081/health && curl -sf http://localhost:8081/api/config
-
-# Import smoke + the sample ships no migrations (head must be upstream's own):
-docker run --rm -e WEBUI_SECRET_KEY=smoke owui-sample:backend \
-  python -c "import open_webui.routers.bedrock, open_webui.utils.bedrock; print('OK')"
-
-# Infra still compiles:
-cd infra && npx tsc --noEmit && npx cdk synth --quiet
+uv run --no-project --with boto3 python scripts/probe-model-capabilities.py
+# review + commit the updated config/model-capabilities.json, then:
+cd infra && npx cdk deploy '*GatewayStack*'
 ```
 
-## Phase 5 — Deploy and smoke-test
+This is independent of the image bump — do it whenever you want new models, not
+only at upgrade time.
 
-Deploy to a dev/test environment first (`./deploy.sh` or the pipeline). The
-pipeline's smoke stage (`buildspec-smoke.yml`) checks `/health`, `/api/config`,
-and the WebSocket upgrade path automatically. Then verify manually:
+## 5. Deploy and smoke-test
 
-- [ ] `/auth` — Cognito SSO login completes, redirects home
-- [ ] Bedrock models appear in the model dropdown
-- [ ] **Send an actual chat message to a Bedrock model** (streaming). This is
-      the canary for async-hygiene regressions — HTTP 200 on the model list
-      endpoint is NOT sufficient.
-- [ ] Per-response token usage displays on assistant messages
-- [ ] Upload file → RAG retrieval in chat
-- [ ] Admin config persists across an ECS task restart
-- [ ] Container startup logs show upstream's migrations applying cleanly (no
-      `alembic.util.exc` errors)
+```bash
+./deploy.sh          # or your own CI running: cd infra && npx cdk deploy --all
+```
 
-If any fail → roll back (previous image digest is retained in the CDK asset
-ECR repo; `git revert` the bump commit and redeploy).
+The only stack that changes for a pin bump is the Compute stack (new image
+digest → new task definition → rolling deploy; the service auto-rolls-back if the
+new tasks don't stabilize). Then verify manually:
 
-## Recovery
+- [ ] **OIDC login** — Cognito SSO completes at `/auth` and redirects home.
+- [ ] **Model dropdown populates from all three lanes** — Chat Completions and
+      Responses (the two native OpenAI connections) plus Claude (the pipe's own
+      discovered models). If a lane is empty, that connection or the pipe failed
+      to seed (check the container logs for the seeder output).
+- [ ] **A streamed chat works on each lane** — send a real message to a
+      Chat-Completions model, a Responses model, and a Claude model. HTTP 200 on
+      the model-list endpoint is **not** sufficient; only an actual streamed
+      response proves the connection/pipe contract still holds against the new
+      release.
 
-### A patch no longer applies
-
-Re-anchor by hand (Phase 2 step 3). The patches are small (+85 backend lines
-total) and additive — every hunk inserts lines; none rewrites upstream logic —
-so re-anchoring is a matter of finding where the insertion point moved.
-
-### Multiple Alembic heads after a bump
-
-The sample ships no migrations, so multi-head states can only come from
-upstream itself (it occasionally ships parallel migration lineages that it
-merges in a later release). If the container errors with `Multiple head
-revisions`, pin one release later, or hold the bump until upstream merges its
-heads. Forks that add their own migrations can use
-`scripts/upgrade/fix-migration-chain.sh` (set `FORK_MIGRATION_GLOB`).
-
-### Revision-ID reuse (forks with migrations only)
-
-Upstream has reused migration revision IDs across releases. If your fork adds
-migrations and a deployed DB is stamped at an ID that now belongs to a
-different upstream migration, the boot migration becomes a silent no-op and
-the app reads tables that were never created. Diagnose by comparing
-`SELECT version_num FROM alembic_version;` against what the schema actually
-contains, and restamp to the last truly-applied common revision before
-deploying the new image.
+If anything fails, revert the pin commit and redeploy the previous digest (ECS
+keeps the prior task-definition revision, and the deployment circuit breaker
+rolls back automatically on a failed stabilize).
 
 ## Recommended cadence
 
-- **Monthly** — absorb the latest tag (`vX.Y.Z`), not `main` HEAD
-- **Out-of-band** — security advisories (like v0.10.2's) or critical fixes
-- Don't chase every commit; tags are stable targets
-
-## Maintaining the manifest
-
-`scripts/upgrade/fork-manifest.json` is the source of truth for
-`scripts/upgrade/verify.sh`. Update it when:
-
-- You patch a new upstream file → add to `modified_upstream_files`
-- You add a sample-only file or directory → add to `fork_only_files`
-- You change Bedrock marker strings → update `invariants.required_*_markers`
-
-Keep it honest and the upgrade scripts stay useful.
+- **Monthly** — absorb the latest release tag (`vX.Y.Z`), not `main` HEAD.
+- **Out-of-band** — on upstream security advisories (like v0.10.2's).
+- Pin **tags, not `main`**; tags are stable, reproducible targets.
