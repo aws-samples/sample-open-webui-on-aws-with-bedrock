@@ -1,0 +1,916 @@
+{
+  "_comment": "Per-TOKEN USD rates for bedrock-mantle usage types, generated from the AWS Price List offer file \u2014 regenerate with scripts/generate-price-map.py. Models in the live catalog but absent here are UNPRICED (the debit Lambda records tokens, prices at $0, and raises the UnpricedModel alarm); add them under 'overrides' with operator-entered rates. Repricing can be backdated: compare 'version' + per-entry '_effective' before trusting historical dollars.",
+  "region": "us-east-1",
+  "version": "20260707080509",
+  "publication_date": "2026-07-07T08:05:09Z",
+  "generated_at": "2026-07-15T10:43:29Z",
+  "models": {
+    "deepseek.v3.1": {
+      "flex": {
+        "input": 2.9e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 8.4e-07
+      },
+      "batch": {
+        "output": 8.4e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 2.9e-07
+      },
+      "standard": {
+        "input": 5.8e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.68e-06
+      },
+      "priority": {
+        "output": 2.94e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 1.015e-06
+      }
+    },
+    "deepseek.v3.2": {
+      "priority": {
+        "input": 1.085e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 3.2375e-06
+      },
+      "standard": {
+        "input": 6.2e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.85e-06
+      },
+      "batch": {
+        "output": 9.25e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 3.1e-07
+      },
+      "flex": {
+        "output": 9.25e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 3.1e-07
+      }
+    },
+    "google.gemma-3-12b-it": {
+      "standard": {
+        "output": 2.9e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 9.000000000000001e-08
+      },
+      "batch": {
+        "output": 1.5e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 5.0000000000000004e-08
+      },
+      "priority": {
+        "input": 1.6e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 5.1e-07
+      },
+      "flex": {
+        "input": 5.0000000000000004e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.5e-07
+      }
+    },
+    "google.gemma-3-27b-it": {
+      "priority": {
+        "output": 6.7e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 4.0000000000000003e-07
+      },
+      "flex": {
+        "input": 1.2000000000000002e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.9e-07
+      },
+      "batch": {
+        "output": 1.9e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 1.2000000000000002e-07
+      },
+      "standard": {
+        "output": 3.8e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 2.3e-07
+      }
+    },
+    "google.gemma-3-4b-it": {
+      "batch": {
+        "input": 2e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 4e-08
+      },
+      "flex": {
+        "output": 4e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 2e-08
+      },
+      "standard": {
+        "output": 8e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 4e-08
+      },
+      "priority": {
+        "output": 1.3999999999999998e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 6.999999999999999e-08
+      }
+    },
+    "google.gemma-4-26b-a4b": {
+      "priority": {
+        "output": 7e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 2.275e-07
+      },
+      "batch": {
+        "output": 2.0000000000000002e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 6.5e-08
+      },
+      "standard": {
+        "input": 1.3e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 4.0000000000000003e-07
+      },
+      "flex": {
+        "input": 6.5e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 2.0000000000000002e-07
+      }
+    },
+    "google.gemma-4-31b": {
+      "standard": {
+        "input": 1.3999999999999998e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 4.0000000000000003e-07
+      },
+      "flex": {
+        "input": 6.999999999999999e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 2.0000000000000002e-07
+      },
+      "priority": {
+        "output": 7e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 2.45e-07
+      },
+      "batch": {
+        "output": 2.0000000000000002e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 6.999999999999999e-08
+      }
+    },
+    "google.gemma-4-e2b": {
+      "batch": {
+        "input": 2e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 4e-08
+      },
+      "flex": {
+        "input": 2e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 4e-08
+      },
+      "standard": {
+        "input": 4e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 8e-08
+      },
+      "priority": {
+        "output": 1.3999999999999998e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 6.999999999999999e-08
+      }
+    },
+    "minimax.minimax-m2": {
+      "standard": {
+        "output": 1.2e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 3e-07
+      },
+      "priority": {
+        "input": 5.2e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 2.1e-06
+      },
+      "flex": {
+        "input": 1.5e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 6e-07
+      },
+      "batch": {
+        "output": 6e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 1.5e-07
+      }
+    },
+    "minimax.minimax-m2.1": {
+      "priority": {
+        "output": 2.1e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 5.25e-07
+      },
+      "flex": {
+        "output": 6e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 1.5e-07
+      },
+      "standard": {
+        "input": 3e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.2e-06
+      },
+      "batch": {
+        "input": 1.5e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 6e-07
+      }
+    },
+    "minimax.minimax-m2.5": {
+      "priority": {
+        "input": 5.25e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 2.1e-06
+      },
+      "batch": {
+        "output": 6e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 1.5e-07
+      },
+      "standard": {
+        "output": 1.2e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 3e-07
+      },
+      "flex": {
+        "input": 1.5e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 6e-07
+      }
+    },
+    "mistral.devstral-2-123b": {
+      "flex": {
+        "input": 2.0000000000000002e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1e-06
+      },
+      "batch": {
+        "output": 1e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 2.0000000000000002e-07
+      },
+      "standard": {
+        "output": 2e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 4.0000000000000003e-07
+      },
+      "priority": {
+        "output": 3.5e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 7e-07
+      }
+    },
+    "mistral.magistral-small-2509": {
+      "priority": {
+        "input": 8.8e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 2.63e-06
+      },
+      "standard": {
+        "input": 5e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.5e-06
+      },
+      "batch": {
+        "input": 2.5e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 7.5e-07
+      },
+      "flex": {
+        "input": 2.5e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 7.5e-07
+      }
+    },
+    "mistral.ministral-3-14b-instruct": {
+      "flex": {
+        "output": 1.0000000000000001e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 1.0000000000000001e-07
+      },
+      "standard": {
+        "input": 2.0000000000000002e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 2.0000000000000002e-07
+      },
+      "batch": {
+        "output": 1.0000000000000001e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 1.0000000000000001e-07
+      },
+      "priority": {
+        "output": 3.5e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 3.5e-07
+      }
+    },
+    "mistral.ministral-3-3b-instruct": {
+      "priority": {
+        "output": 1.7000000000000001e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 1.7000000000000001e-07
+      },
+      "flex": {
+        "output": 5.0000000000000004e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 5.0000000000000004e-08
+      },
+      "batch": {
+        "output": 5.0000000000000004e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 5.0000000000000004e-08
+      },
+      "standard": {
+        "output": 1.0000000000000001e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 1.0000000000000001e-07
+      }
+    },
+    "mistral.ministral-3-8b-instruct": {
+      "batch": {
+        "output": 6.999999999999999e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 6.999999999999999e-08
+      },
+      "standard": {
+        "output": 1.5e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 1.5e-07
+      },
+      "priority": {
+        "input": 2.6e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 2.6e-07
+      },
+      "flex": {
+        "input": 6.999999999999999e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 6.999999999999999e-08
+      }
+    },
+    "mistral.mistral-large-3-675b-instruct": {
+      "standard": {
+        "input": 5e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.5e-06
+      },
+      "flex": {
+        "output": 7.5e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 2.5e-07
+      },
+      "batch": {
+        "input": 2.5e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 7.5e-07
+      },
+      "priority": {
+        "input": 8.8e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 2.63e-06
+      }
+    },
+    "mistral.voxtral-mini-3b-2507": {
+      "priority": {
+        "output": 6.999999999999999e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 6.999999999999999e-08
+      },
+      "flex": {
+        "input": 2e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 2e-08
+      },
+      "standard": {
+        "output": 4e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 4e-08
+      },
+      "batch": {
+        "output": 2e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 2e-08
+      }
+    },
+    "mistral.voxtral-small-24b-2507": {
+      "standard": {
+        "input": 1.0000000000000001e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 3e-07
+      },
+      "flex": {
+        "input": 5.0000000000000004e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.5e-07
+      },
+      "priority": {
+        "output": 5.2e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 1.7000000000000001e-07
+      },
+      "batch": {
+        "input": 5.0000000000000004e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.5e-07
+      }
+    },
+    "moonshotai.kimi-k2-thinking": {
+      "flex": {
+        "output": 1.25e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 3e-07
+      },
+      "priority": {
+        "input": 1.05e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 4.38e-06
+      },
+      "standard": {
+        "input": 6e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 2.5e-06
+      },
+      "batch": {
+        "output": 1.25e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 3e-07
+      }
+    },
+    "moonshotai.kimi-k2.5": {
+      "standard": {
+        "output": 3e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 6e-07
+      },
+      "batch": {
+        "input": 3e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.5e-06
+      },
+      "priority": {
+        "input": 1.05e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 5.2500000000000006e-06
+      },
+      "flex": {
+        "output": 1.5e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 3e-07
+      }
+    },
+    "nvidia.nemotron-nano-12b-v2": {
+      "priority": {
+        "output": 1.05e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 3.5e-07
+      },
+      "batch": {
+        "output": 3e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 1.0000000000000001e-07
+      },
+      "standard": {
+        "output": 6e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 2.0000000000000002e-07
+      },
+      "flex": {
+        "input": 1.0000000000000001e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 3e-07
+      }
+    },
+    "nvidia.nemotron-nano-3-30b": {
+      "batch": {
+        "output": 1.2000000000000002e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 3.0000000000000004e-08
+      },
+      "flex": {
+        "input": 3.0000000000000004e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.2000000000000002e-07
+      },
+      "standard": {
+        "input": 6.000000000000001e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 2.4000000000000003e-07
+      },
+      "priority": {
+        "input": 1.1e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 4.2e-07
+      }
+    },
+    "nvidia.nemotron-nano-9b-v2": {
+      "priority": {
+        "output": 4.0000000000000003e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 1.1e-07
+      },
+      "batch": {
+        "output": 1.2000000000000002e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 3.0000000000000004e-08
+      },
+      "flex": {
+        "output": 1.2000000000000002e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 3.0000000000000004e-08
+      },
+      "standard": {
+        "input": 6.000000000000001e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 2.3e-07
+      }
+    },
+    "nvidia.nemotron-super-3-120b": {
+      "standard": {
+        "output": 6.499999999999999e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 1.5e-07
+      },
+      "batch": {
+        "output": 3.2499999999999996e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 7.5e-08
+      },
+      "priority": {
+        "output": 1.1375000000000001e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 2.625e-07
+      },
+      "flex": {
+        "output": 3.2499999999999996e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 7.5e-08
+      }
+    },
+    "openai.gpt-oss-120b": {
+      "priority": {
+        "input": 2.625e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.05e-06
+      },
+      "batch": {
+        "output": 3e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 7.5e-08
+      },
+      "flex": {
+        "input": 7.5e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 3e-07
+      },
+      "standard": {
+        "output": 6e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 1.5e-07
+      }
+    },
+    "openai.gpt-oss-20b": {
+      "standard": {
+        "output": 3e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 6.999999999999999e-08
+      },
+      "flex": {
+        "input": 3.4999999999999996e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.5e-07
+      },
+      "priority": {
+        "output": 5.25e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 1.225e-07
+      },
+      "batch": {
+        "input": 3.4999999999999996e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.5e-07
+      }
+    },
+    "openai.gpt-oss-safeguard-120b": {
+      "standard": {
+        "input": 1.5e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 6e-07
+      },
+      "flex": {
+        "input": 6.999999999999999e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 3e-07
+      },
+      "batch": {
+        "input": 6.999999999999999e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 3e-07
+      },
+      "priority": {
+        "output": 1.05e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 2.6e-07
+      }
+    },
+    "openai.gpt-oss-safeguard-20b": {
+      "flex": {
+        "input": 3.0000000000000004e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.0000000000000001e-07
+      },
+      "batch": {
+        "output": 1.0000000000000001e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 3.0000000000000004e-08
+      },
+      "standard": {
+        "input": 6.999999999999999e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 2.0000000000000002e-07
+      },
+      "priority": {
+        "input": 1.2000000000000002e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 3.5e-07
+      }
+    },
+    "qwen.qwen3-235b-a22b-2507": {
+      "batch": {
+        "input": 1.1e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 4.4e-07
+      },
+      "priority": {
+        "output": 1.5399999999999999e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 3.8499999999999997e-07
+      },
+      "flex": {
+        "output": 4.4e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 1.1e-07
+      },
+      "standard": {
+        "output": 8.8e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 2.2e-07
+      }
+    },
+    "qwen.qwen3-32b": {
+      "priority": {
+        "output": 1.05e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 2.625e-07
+      },
+      "batch": {
+        "input": 7.5e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 3e-07
+      },
+      "flex": {
+        "input": 7.5e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 3e-07
+      },
+      "standard": {
+        "input": 1.5e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 6e-07
+      }
+    },
+    "qwen.qwen3-coder-30b-a3b-instruct": {
+      "batch": {
+        "output": 3e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 7.5e-08
+      },
+      "standard": {
+        "input": 1.5e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 6e-07
+      },
+      "flex": {
+        "input": 7.5e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 3e-07
+      },
+      "priority": {
+        "input": 2.625e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.05e-06
+      }
+    },
+    "qwen.qwen3-coder-480b-a35b-instruct": {
+      "standard": {
+        "input": 4.5e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.8e-06
+      },
+      "batch": {
+        "input": 2.25e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 9e-07
+      },
+      "priority": {
+        "input": 7.875e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 3.15e-06
+      },
+      "flex": {
+        "output": 9e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 2.25e-07
+      }
+    },
+    "qwen.qwen3-coder-next": {
+      "flex": {
+        "output": 6e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 2.5e-07
+      },
+      "batch": {
+        "output": 6e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 2.5e-07
+      },
+      "priority": {
+        "input": 8.75e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 2.1e-06
+      },
+      "standard": {
+        "input": 5e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.2e-06
+      }
+    },
+    "qwen.qwen3-next-80b-a3b-instruct": {
+      "priority": {
+        "input": 2.6e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 2.1e-06
+      },
+      "standard": {
+        "output": 1.2e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 1.3999999999999998e-07
+      },
+      "batch": {
+        "input": 6.999999999999999e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 6e-07
+      },
+      "flex": {
+        "output": 6e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 6.999999999999999e-08
+      }
+    },
+    "qwen.qwen3-vl-235b-a22b-instruct": {
+      "priority": {
+        "output": 4.66e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 9.300000000000001e-07
+      },
+      "standard": {
+        "input": 5.3e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 2.66e-06
+      },
+      "flex": {
+        "input": 2.6e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.33e-06
+      },
+      "batch": {
+        "output": 1.33e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 2.6e-07
+      }
+    },
+    "writer.palmyra-vision-7b": {
+      "flex": {
+        "output": 3e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 7.5e-08
+      },
+      "standard": {
+        "input": 1.5e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 6e-07
+      },
+      "batch": {
+        "output": 3e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 7.5e-08
+      },
+      "priority": {
+        "input": 2.625e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.05e-06
+      }
+    },
+    "xai.grok-4.3": {
+      "flex": {
+        "output": 0.00125,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 0.000625,
+        "cache-read": 0.0001
+      },
+      "priority": {
+        "cache-read": 0.00035,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 0.004375,
+        "input": 0.0021875
+      },
+      "batch": {
+        "output": 0.00125,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 0.000625,
+        "cache-read": 0.0001
+      },
+      "standard": {
+        "input": 0.00125,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 0.0025,
+        "cache-read": 0.0002
+      }
+    },
+    "zai.glm-4.7": {
+      "priority": {
+        "output": 3.85e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 1.05e-06
+      },
+      "flex": {
+        "output": 1.1e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 3e-07
+      },
+      "batch": {
+        "output": 1.1e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 3e-07
+      },
+      "standard": {
+        "input": 6e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 2.2e-06
+      }
+    },
+    "zai.glm-4.7-flash": {
+      "priority": {
+        "output": 7e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 1.225e-07
+      },
+      "flex": {
+        "input": 3.4999999999999996e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 2.0000000000000002e-07
+      },
+      "batch": {
+        "input": 3.4999999999999996e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 2.0000000000000002e-07
+      },
+      "standard": {
+        "input": 6.999999999999999e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 4.0000000000000003e-07
+      }
+    },
+    "zai.glm5": {
+      "priority": {
+        "input": 1.75e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 5.6e-06
+      },
+      "flex": {
+        "output": 1.6000000000000001e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 5e-07
+      },
+      "standard": {
+        "output": 3.2000000000000003e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 1e-06
+      },
+      "batch": {
+        "output": 1.6000000000000001e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 5e-07
+      }
+    }
+  },
+  "overrides": {}
+}

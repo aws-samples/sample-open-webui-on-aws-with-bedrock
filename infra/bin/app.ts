@@ -106,6 +106,22 @@ const gatewayStack = new GatewayStack(app, `${prefix}Gateway`, {
 });
 gatewayStack.addDependency(authStack);
 
+// Metering Stack — opt-in; synthesized only when the flag is on. Created
+// before Compute so the compute stack can wire the seeded filter to the
+// metering bus/table.
+let meteringStack: MeteringStack | undefined;
+if (meteringEnabled) {
+  meteringStack = new MeteringStack(app, `${prefix}Metering`, {
+    env,
+    userPool: authStack.userPool,
+    userPoolClient: authStack.userPoolClient,
+    gatewayId: gatewayStack.gatewayId,
+    gatewayInferenceUrl: gatewayStack.gatewayInferenceUrl,
+    environmentPrefix: envConfig?.environment,
+  });
+  meteringStack.addDependency(gatewayStack);
+}
+
 // Compute Stack
 const computeStack = new ComputeStack(app, `${prefix}Compute`, {
   env,
@@ -126,22 +142,15 @@ const computeStack = new ComputeStack(app, `${prefix}Compute`, {
   enableAutoScaling: envConfig?.enableAutoScaling,
   environmentPrefix: envConfig?.environment,
   gatewayInferenceUrl: gatewayStack.gatewayInferenceUrl,
+  metering: meteringStack
+    ? { busName: meteringStack.bus.eventBusName, tableName: meteringStack.table.tableName }
+    : undefined,
 });
 computeStack.addDependency(dataStack);
 computeStack.addDependency(authStack);
 computeStack.addDependency(gatewayStack);
-
-// Metering Stack — opt-in; synthesized only when the flag is on.
-if (meteringEnabled) {
-  const meteringStack = new MeteringStack(app, `${prefix}Metering`, {
-    env,
-    userPool: authStack.userPool,
-    userPoolClient: authStack.userPoolClient,
-    gatewayId: gatewayStack.gatewayId,
-    gatewayInferenceUrl: gatewayStack.gatewayInferenceUrl,
-    environmentPrefix: envConfig?.environment,
-  });
-  meteringStack.addDependency(gatewayStack);
+if (meteringStack) {
+  computeStack.addDependency(meteringStack);
 }
 
 app.synth();
