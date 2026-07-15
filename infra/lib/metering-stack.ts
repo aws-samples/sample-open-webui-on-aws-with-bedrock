@@ -11,6 +11,11 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import { DynamoEventSource } from 'aws-cdk-lib/aws-lambda-event-sources';
 import * as logs from 'aws-cdk-lib/aws-logs';
+import * as apigwv2 from 'aws-cdk-lib/aws-apigatewayv2';
+import * as apigwv2Authorizers from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
+import * as apigwv2Integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as sns from 'aws-cdk-lib/aws-sns';
 import * as sqs from 'aws-cdk-lib/aws-sqs';
 import * as fs from 'fs';
@@ -205,10 +210,156 @@ export class MeteringStack extends cdk.Stack {
     });
     unpricedAlarm.addAlarmAction(new cwactions.SnsAction(this.alertsTopic));
 
+    // ── Canaries: prove BOTH failure directions hourly (design §4.2/§4.8) ──
+    // Block canary: over-quota synthetic user must get 429. Capture canary:
+    // a usage event must settle. They authenticate as real Cognito users so
+    // the whole JWT→interceptor→DDB path is exercised.
+    const canaryPassword = new secretsmanager.Secret(this, 'CanaryPassword', {
+      secretName: `open-webui/${envPrefix}metering-canary-password`,
+      generateSecretString: { excludePunctuation: false, passwordLength: 24 },
+    });
+    const gatewayUrlParam = new ssm.StringParameter(this, 'GatewayUrlParam', {
+      parameterName: `/${envPrefix || 'default-'}open-webui/metering/gateway-inference-url`,
+      stringValue: props.gatewayInferenceUrl,
+    });
+    const canaryEnvCommon = {
+      TABLE: this.table.tableName,
+      BUS: this.bus.eventBusName,
+      USER_POOL_ID: props.userPool.userPoolId,
+      CLIENT_ID: props.userPoolClient.userPoolClientId,
+      PASSWORD_SECRET_ARN: canaryPassword.secretArn,
+      GATEWAY_URL_PARAM: gatewayUrlParam.parameterName,
+    };
+    const mkCanary = (mode: 'block' | 'capture') => {
+      const fn = new lambda.Function(this, `${mode}Canary`, {
+        functionName: `${envPrefix}open-webui-metering-${mode}-canary`,
+        runtime: lambda.Runtime.PYTHON_3_12,
+        handler: 'index.handler',
+        code: lambda.Code.fromAsset(path.join(__dirname, '..', '..', 'metering', 'canary')),
+        timeout: cdk.Duration.minutes(2),
+        memorySize: 256,
+        environment: { ...canaryEnvCommon, MODE: mode, USERNAME: `metering-${mode}-canary` },
+        logRetention: logs.RetentionDays.ONE_MONTH,
+      });
+      this.table.grantReadWriteData(fn);
+      this.bus.grantPutEventsTo(fn);
+      canaryPassword.grantRead(fn);
+      gatewayUrlParam.grantRead(fn);
+      fn.addToRolePolicy(new iam.PolicyStatement({
+        actions: ['cognito-idp:AdminGetUser', 'cognito-idp:AdminCreateUser',
+                  'cognito-idp:AdminSetUserPassword', 'cognito-idp:InitiateAuth'],
+        resources: [props.userPool.userPoolArn],
+      }));
+      fn.addToRolePolicy(metricsPolicy);
+      new events.Rule(this, `${mode}CanarySchedule`, {
+        schedule: events.Schedule.rate(cdk.Duration.hours(1)),
+        targets: [new targets.LambdaFunction(fn)],
+      });
+      const alarm = new cloudwatch.Alarm(this, `${mode}CanaryAlarm`, {
+        alarmName: `${envPrefix}open-webui-metering-${mode}-canary`,
+        metric: new cloudwatch.Metric({
+          namespace: 'Metering',
+          metricName: mode === 'block' ? 'BlockCanaryFailure' : 'CaptureCanaryFailure',
+          statistic: 'Sum',
+          period: cdk.Duration.hours(1),
+        }),
+        threshold: 1,
+        evaluationPeriods: 1,
+        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      });
+      alarm.addAlarmAction(new cwactions.SnsAction(this.alertsTopic));
+      return fn;
+    };
+    mkCanary('block');
+    mkCanary('capture');
+
+    // ── Reconciler: nightly ledger-vs-invoice drift (design M3) ────────────
+    const reconcilerFn = new lambda.Function(this, 'ReconcilerFn', {
+      functionName: `${envPrefix}open-webui-metering-reconciler`,
+      runtime: lambda.Runtime.PYTHON_3_12,
+      handler: 'index.handler',
+      code: lambda.Code.fromAsset(path.join(__dirname, '..', '..', 'metering', 'reconciler')),
+      timeout: cdk.Duration.minutes(5),
+      memorySize: 512,
+      environment: { TABLE: this.table.tableName, FLOOR_TOKENS: '100000' },
+      logRetention: logs.RetentionDays.ONE_MONTH,
+    });
+    this.table.grantReadData(reconcilerFn);
+    reconcilerFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['ce:GetCostAndUsage'],
+      resources: ['*'],
+    }));
+    reconcilerFn.addToRolePolicy(metricsPolicy);
+    new events.Rule(this, 'ReconcilerSchedule', {
+      schedule: events.Schedule.cron({ minute: '0', hour: '6' }),
+      targets: [new targets.LambdaFunction(reconcilerFn)],
+    });
+    const driftAlarm = new cloudwatch.Alarm(this, 'DriftAlarm', {
+      alarmName: `${envPrefix}open-webui-metering-reconciliation-drift`,
+      metric: new cloudwatch.Metric({
+        namespace: 'Metering', metricName: 'ReconciliationDriftPct',
+        dimensionsMap: { Model: 'ALL' }, statistic: 'Maximum', period: cdk.Duration.days(1),
+      }),
+      threshold: 5,
+      evaluationPeriods: 1,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+    driftAlarm.addAlarmAction(new cwactions.SnsAction(this.alertsTopic));
+
+    // ── Admin API: the operator control surface, outside Open WebUI ────────
+    const adminFn = new lambda.Function(this, 'AdminFn', {
+      functionName: `${envPrefix}open-webui-metering-admin`,
+      runtime: lambda.Runtime.PYTHON_3_12,
+      handler: 'index.handler',
+      code: lambda.Code.fromAsset(path.join(__dirname, '..', '..', 'metering', 'admin-api')),
+      timeout: cdk.Duration.seconds(15),
+      memorySize: 256,
+      environment: { TABLE: this.table.tableName },
+      logRetention: logs.RetentionDays.ONE_MONTH,
+    });
+    this.table.grantReadWriteData(adminFn);
+
+    const httpApi = new apigwv2.HttpApi(this, 'AdminApi', {
+      apiName: `${envPrefix}open-webui-metering-admin`,
+      description: 'Metering operator API (quotas, usage, overrides) — Cognito-JWT-gated',
+    });
+    const authorizer = new apigwv2Authorizers.HttpJwtAuthorizer(
+      'CognitoJwt',
+      `https://cognito-idp.${cdk.Aws.REGION}.amazonaws.com/${props.userPool.userPoolId}`,
+      { jwtAudience: [props.userPoolClient.userPoolClientId] },
+    );
+    const integration = new apigwv2Integrations.HttpLambdaIntegration('AdminIntegration', adminFn);
+    for (const [routePath, methods] of [
+      ['/policy/{scope}', [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.PUT]],
+      ['/usage/{sub}', [apigwv2.HttpMethod.GET]],
+      ['/usage/me', [apigwv2.HttpMethod.GET]],
+      ['/override', [apigwv2.HttpMethod.POST]],
+      ['/counter-reset', [apigwv2.HttpMethod.POST]],
+    ] as const) {
+      httpApi.addRoutes({ path: routePath, methods: [...methods], integration, authorizer });
+    }
+
+    // ── Ops dashboard ───────────────────────────────────────────────────────
+    const m = (name: string, stat = 'Sum', dims?: Record<string, string>) =>
+      new cloudwatch.Metric({ namespace: 'Metering', metricName: name, statistic: stat, period: cdk.Duration.minutes(15), dimensionsMap: dims });
+    new cloudwatch.Dashboard(this, 'Dashboard', {
+      dashboardName: `${envPrefix}open-webui-metering`,
+      widgets: [[
+        new cloudwatch.GraphWidget({ title: 'Spend (settled USD / 15 min)', left: [m('SettledUSD')], width: 8 }),
+        new cloudwatch.GraphWidget({ title: 'Calls settled / denies', left: [m('SettledCalls'), m('DenyDecisions')], width: 8 }),
+        new cloudwatch.GraphWidget({ title: 'Degraded checks (fail-open)', left: [m('DegradedChecks')], width: 8 }),
+      ], [
+        new cloudwatch.GraphWidget({ title: 'Sweeper (orphaned estimates)', left: [m('SweptEstimates'), m('SweptEstimateUSD')], width: 8 }),
+        new cloudwatch.GraphWidget({ title: 'Canaries (failures)', left: [m('BlockCanaryFailure'), m('CaptureCanaryFailure')], width: 8 }),
+        new cloudwatch.GraphWidget({ title: 'Reconciliation drift % (ALL)', left: [m('ReconciliationDriftPct', 'Maximum', { Model: 'ALL' })], width: 8 }),
+      ]],
+    });
+
     // ── Outputs ────────────────────────────────────────────────────────────
     new cdk.CfnOutput(this, 'MeteringTableName', { value: this.table.tableName });
     new cdk.CfnOutput(this, 'MeteringBusName', { value: this.bus.eventBusName });
     new cdk.CfnOutput(this, 'MeteringAlertsTopicArn', { value: this.alertsTopic.topicArn });
     new cdk.CfnOutput(this, 'PriceMapVersion', { value: String(priceMap.version) });
+    new cdk.CfnOutput(this, 'AdminApiUrl', { value: httpApi.apiEndpoint });
   }
 }

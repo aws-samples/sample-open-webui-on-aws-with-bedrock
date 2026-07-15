@@ -103,6 +103,7 @@ const gatewayStack = new GatewayStack(app, `${prefix}Gateway`, {
   userPool: authStack.userPool,
   userPoolClient: authStack.userPoolClient,
   environmentPrefix: envConfig?.environment,
+  metering: meteringEnabled,
 });
 gatewayStack.addDependency(authStack);
 
