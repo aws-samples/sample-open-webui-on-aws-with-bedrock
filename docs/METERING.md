@@ -27,6 +27,17 @@ live-spike-proven or doc-verified there).
 - **Enforcement ramp:** deploy with `-c meteringMode=observe` to run the
   interceptor in OBSERVE (log-only decisions, nothing blocked) and flip to
   ENFORCE by redeploying without it.
+- **With the model refresher (`enableModelRefresh`):** the metering interceptor
+  also holds the `MODEL_CAPS` model list, and the gateway invokes it through the
+  `live` **alias** pinned to a published (frozen-env) version. So the refresher
+  can't just update `$LATEST` — it publishes a new version and repoints the
+  alias, or new models would list-and-route at the gateway yet never reach the
+  served version. The stack passes the refresher `INTERCEPTOR_ALIAS=live` and
+  grants it `lambda:PublishVersion` + `lambda:UpdateAlias` automatically when
+  both modules are on; with metering off, the refresher targets `$LATEST`
+  directly. (Repointing the alias outside a CodeDeploy deployment window is the
+  supported way to ship a config-only change — CodeDeploy owns the alias only
+  during an interceptor *code* roll.)
 
 ## What it does
 

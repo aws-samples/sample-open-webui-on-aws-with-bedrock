@@ -34,6 +34,15 @@ Idempotent: if the fresh matrix equals what's already live, it does nothing
 
 Environment:
   INTERCEPTOR_FUNCTION_NAME  interceptor Lambda whose MODEL_CAPS we update (required)
+  INTERCEPTOR_ALIAS          if set (e.g. "live"), the gateway invokes the
+                             interceptor through this ALIAS pinned to a published
+                             VERSION (the metering module does this, behind a
+                             CodeDeploy canary). A published version's env is
+                             FROZEN, so updating $LATEST alone is invisible to
+                             traffic. When set, we publish a fresh version after
+                             updating $LATEST and repoint the alias to it.
+                             Absent (the base sample) ⇒ the gateway invokes
+                             $LATEST directly and updating it is sufficient.
   GATEWAY_ID                 gateway id, for the connector re-snapshot (required)
   CONNECTOR_TARGET_NAME      connector target name to re-snapshot (default "bedrock")
   CONNECTOR_ID               connector id (default "bedrock-mantle")
@@ -56,6 +65,7 @@ from probe_core import CAPS_COMMENT, probe_matrix
 
 REGION = os.environ.get("MANTLE_REGION") or os.environ.get("AWS_REGION", "us-east-1")
 INTERCEPTOR = os.environ["INTERCEPTOR_FUNCTION_NAME"]
+INTERCEPTOR_ALIAS = os.environ.get("INTERCEPTOR_ALIAS", "").strip()
 GATEWAY_ID = os.environ["GATEWAY_ID"]
 CONNECTOR_TARGET_NAME = os.environ.get("CONNECTOR_TARGET_NAME", "bedrock")
 CONNECTOR_ID = os.environ.get("CONNECTOR_ID", "bedrock-mantle")
@@ -83,10 +93,21 @@ def _notify(subject, message):
 
 
 def _current_caps():
-    cfg = _lambda.get_function_configuration(FunctionName=INTERCEPTOR)
-    raw = cfg["Environment"]["Variables"].get("MODEL_CAPS", "{}")
-    caps = json.loads(raw)
-    return cfg["Environment"]["Variables"], caps
+    """Return (latest_env_vars, currently_SERVED_caps).
+
+    The env we mutate lives on $LATEST, but what SERVES traffic is the aliased
+    published version when an alias is configured. We diff against what serves,
+    not against $LATEST — otherwise, if a prior run wrote $LATEST but failed to
+    promote the alias, the diff would read 'no change' and the alias would stay
+    stuck on the stale version forever."""
+    latest = _lambda.get_function_configuration(FunctionName=INTERCEPTOR)
+    served_qualifier = INTERCEPTOR_ALIAS or None
+    if served_qualifier:
+        served = _lambda.get_function_configuration(FunctionName=INTERCEPTOR, Qualifier=served_qualifier)
+    else:
+        served = latest
+    served_caps = json.loads(served["Environment"]["Variables"].get("MODEL_CAPS", "{}"))
+    return latest["Environment"]["Variables"], served_caps
 
 
 def _diff(old, new):
@@ -112,6 +133,24 @@ def _collapse_tripped(old, new):
         if o > 0 and n < o * COLLAPSE_MIN_RATIO:
             return True, f"[{lane}] {o}->{n} (< {COLLAPSE_MIN_RATIO:.0%} of previous)"
     return False, ""
+
+
+def _promote_to_alias():
+    """When the gateway invokes the interceptor through an alias pinned to a
+    published version (the metering module's CodeDeploy canary), updating
+    $LATEST's env is invisible — a published version's environment is frozen.
+    So: wait for the $LATEST config update to settle, publish a NEW version
+    (which snapshots current $LATEST code+env), then repoint the alias to it.
+
+    Repointing a CodeDeploy-managed alias outside a deployment window is the
+    supported way to ship a config-only change; CodeDeploy only owns the alias
+    during an active deployment (an interceptor CODE roll)."""
+    waiter = _lambda.get_waiter("function_updated_v2")
+    waiter.wait(FunctionName=INTERCEPTOR)
+    version = _lambda.publish_version(FunctionName=INTERCEPTOR)["Version"]
+    _lambda.update_alias(FunctionName=INTERCEPTOR, Name=INTERCEPTOR_ALIAS, FunctionVersion=version)
+    _log(f"published version {version} and repointed alias {INTERCEPTOR_ALIAS!r} to it")
+    return version
 
 
 def _resnapshot_connector():
@@ -167,13 +206,29 @@ def handler(event, context):
         )
         return {"changed": False, "guard_tripped": True, "reason": why}
 
-    # 4. Apply the new MODEL_CAPS to the interceptor.
+    # 4. Apply the new MODEL_CAPS to the interceptor ($LATEST).
     new_env = dict(env_vars)
     new_env["MODEL_CAPS"] = json.dumps(fresh_caps)
     _lambda.update_function_configuration(
         FunctionName=INTERCEPTOR, Environment={"Variables": new_env}
     )
-    _log("MODEL_CAPS updated on interceptor")
+    _log("MODEL_CAPS updated on interceptor ($LATEST)")
+
+    # 4b. If the gateway invokes via an alias→published-version (metering module),
+    # $LATEST is not what serves traffic — publish a new version and move the
+    # alias, or the refresh silently never takes effect.
+    if INTERCEPTOR_ALIAS:
+        try:
+            _promote_to_alias()
+        except Exception as e:  # noqa: BLE001
+            _notify(
+                "model-refresher: updated $LATEST but ALIAS PROMOTE FAILED — refresh not live",
+                f"Region {REGION}. MODEL_CAPS was written to $LATEST but the gateway "
+                f"invokes the interceptor via alias {INTERCEPTOR_ALIAS!r}, and publishing "
+                f"a new version / repointing the alias failed — so the new list is NOT "
+                f"serving traffic yet. Re-run once resolved.\n\nError: {e}\n\nDiff:\n{diff}",
+            )
+            return {"changed": True, "alias_promote_failed": True, "diff": diff}
 
     # 5. Re-snapshot the connector so newly-listed models actually route.
     try:

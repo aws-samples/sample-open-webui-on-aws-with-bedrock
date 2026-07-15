@@ -326,6 +326,12 @@ export class GatewayStack extends cdk.Stack {
           MANTLE_REGION: mantleRegion,
           SNS_TOPIC_ARN: alertTopic.topicArn,
           COLLAPSE_MIN_RATIO: '0.5',
+          // Metering module: the gateway invokes the interceptor via a "live"
+          // alias pinned to a published (frozen-env) version. Updating $LATEST
+          // alone is invisible to traffic, so the refresher must publish a new
+          // version and repoint the alias. Absent (base sample) ⇒ gateway hits
+          // $LATEST directly and updating it is sufficient.
+          ...(this.meteringInterceptorAlias ? { INTERCEPTOR_ALIAS: this.meteringInterceptorAlias.aliasName } : {}),
         },
         logRetention: logs.RetentionDays.ONE_MONTH,
       });
@@ -335,10 +341,18 @@ export class GatewayStack extends cdk.Stack {
         actions: ['bedrock-mantle:*'],
         resources: ['*'],
       }));
-      // Update the interceptor's MODEL_CAPS (read to diff + write to apply).
+      // Update the interceptor's MODEL_CAPS (read to diff + write to apply). The
+      // alias-qualified read (GetFunctionConfiguration on :live) and the
+      // publish-version + repoint-alias promotion need function + alias scope.
+      const interceptorArns = [interceptor.functionArn, `${interceptor.functionArn}:*`];
       refresher.addToRolePolicy(new iam.PolicyStatement({
-        actions: ['lambda:GetFunctionConfiguration', 'lambda:UpdateFunctionConfiguration'],
-        resources: [interceptor.functionArn],
+        actions: [
+          'lambda:GetFunctionConfiguration',
+          'lambda:UpdateFunctionConfiguration',
+          'lambda:PublishVersion',
+          'lambda:UpdateAlias',
+        ],
+        resources: interceptorArns,
       }));
       // Re-snapshot the connector target (list to find it, update to refresh).
       refresher.addToRolePolicy(new iam.PolicyStatement({
