@@ -19,6 +19,7 @@ import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as sns from 'aws-cdk-lib/aws-sns';
 import * as sqs from 'aws-cdk-lib/aws-sqs';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { Construct } from 'constructs';
 
@@ -72,7 +73,11 @@ export class MeteringStack extends cdk.Stack {
     // raise the UnpricedModel alarm — never a silent guess (design M3).
     const pricesPath = path.join(__dirname, '..', '..', 'config', 'model-prices.json');
     const priceMap = JSON.parse(fs.readFileSync(pricesPath, 'utf-8'));
-    const priceMapEnv = JSON.stringify({ version: priceMap.version, models: { ...priceMap.models, ...priceMap.overrides } });
+    // The full map (~17 KB) exceeds Lambda's 4 KB env ceiling — bundle it into
+    // the debit Lambda's asset instead (same pattern as the interceptor).
+    const debitStagingDir = fs.mkdtempSync(path.join(os.tmpdir(), 'metering-debit-'));
+    fs.copyFileSync(path.join(__dirname, '..', '..', 'metering', 'debit', 'index.py'), path.join(debitStagingDir, 'index.py'));
+    fs.copyFileSync(pricesPath, path.join(debitStagingDir, 'model-prices.json'));
 
     // ── The single metering table ──────────────────────────────────────────
     this.table = new dynamodb.Table(this, 'MeteringTable', {
@@ -116,12 +121,11 @@ export class MeteringStack extends cdk.Stack {
       functionName: `${envPrefix}open-webui-metering-debit`,
       runtime: lambda.Runtime.PYTHON_3_12,
       handler: 'index.handler',
-      code: lambda.Code.fromAsset(path.join(__dirname, '..', '..', 'metering', 'debit')),
+      code: lambda.Code.fromAsset(debitStagingDir),
       timeout: cdk.Duration.seconds(30),
       memorySize: 256,
       environment: {
         TABLE: this.table.tableName,
-        PRICE_MAP: priceMapEnv,
         SNS_TOPIC: this.alertsTopic.topicArn,
         GROUP_ORDER: JSON.stringify(
           JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'config', 'metering-groups.json'), 'utf-8')).groups ?? [],

@@ -36,7 +36,23 @@ log = logging.getLogger()
 log.setLevel(logging.INFO)
 
 TABLE = os.environ["TABLE"]
-PRICE_MAP = json.loads(os.environ.get("PRICE_MAP", "{}"))
+
+
+def _load_price_map() -> dict:
+    """Env override for tests; bundled model-prices.json in the deploy asset
+    (the full map is ~17 KB — over Lambda's 4 KB env ceiling)."""
+    if os.environ.get("PRICE_MAP"):
+        return json.loads(os.environ["PRICE_MAP"])
+    try:
+        here = os.path.dirname(os.path.abspath(__file__))
+        with open(os.path.join(here, "model-prices.json")) as f:
+            raw = json.load(f)
+        return {"version": raw.get("version"), "models": {**raw.get("models", {}), **raw.get("overrides", {})}}
+    except (OSError, ValueError):
+        return {}
+
+
+PRICE_MAP = _load_price_map()
 PRICE_MAP_VERSION = PRICE_MAP.get("version", "unversioned")
 SNS_TOPIC = os.environ.get("SNS_TOPIC", "")
 CANARY_SUBS = set(filter(None, os.environ.get("CANARY_SUBS", "").split(",")))
