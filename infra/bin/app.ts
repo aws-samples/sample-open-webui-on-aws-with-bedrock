@@ -10,6 +10,7 @@ import { DataStack } from '../lib/data-stack';
 import { AuthStack } from '../lib/auth-stack';
 import { GatewayStack } from '../lib/gateway-stack';
 import { ComputeStack } from '../lib/compute-stack';
+import { MeteringStack } from '../lib/metering-stack';
 import { EnvironmentConfig, getDevConfig, getProdConfig } from '../lib/environment-config';
 
 const app = new cdk.App();
@@ -33,6 +34,11 @@ function getConfig(key: string): string | undefined {
 
 // Environment-aware configuration
 const environment = app.node.tryGetContext('environment') as string | undefined;
+
+// Opt-in metering module (docs/METERING.md). OFF unless -c metering=on
+// (deploy.sh --metering). When off, nothing below references it and the base
+// five stacks are unaffected.
+const meteringEnabled = (getConfig('metering') ?? 'off') === 'on';
 
 let envConfig: EnvironmentConfig | undefined;
 if (environment === 'dev') {
@@ -124,5 +130,18 @@ const computeStack = new ComputeStack(app, `${prefix}Compute`, {
 computeStack.addDependency(dataStack);
 computeStack.addDependency(authStack);
 computeStack.addDependency(gatewayStack);
+
+// Metering Stack — opt-in; synthesized only when the flag is on.
+if (meteringEnabled) {
+  const meteringStack = new MeteringStack(app, `${prefix}Metering`, {
+    env,
+    userPool: authStack.userPool,
+    userPoolClient: authStack.userPoolClient,
+    gatewayId: gatewayStack.gatewayId,
+    gatewayInferenceUrl: gatewayStack.gatewayInferenceUrl,
+    environmentPrefix: envConfig?.environment,
+  });
+  meteringStack.addDependency(gatewayStack);
+}
 
 app.synth();
