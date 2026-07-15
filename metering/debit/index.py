@@ -40,6 +40,16 @@ PRICE_MAP = json.loads(os.environ.get("PRICE_MAP", "{}"))
 PRICE_MAP_VERSION = PRICE_MAP.get("version", "unversioned")
 SNS_TOPIC = os.environ.get("SNS_TOPIC", "")
 CANARY_SUBS = set(filter(None, os.environ.get("CANARY_SUBS", "").split(",")))
+# Same precedence list the interceptor uses (config/metering-groups.json order)
+# so estimate rows and settled ledger rows agree on billing_group.
+GROUP_ORDER = json.loads(os.environ.get("GROUP_ORDER", "[]"))
+
+
+def _billing_group(groups: list) -> str:
+    for configured in GROUP_ORDER:
+        if configured in groups:
+            return configured
+    return "unassigned"
 
 ddb = boto3.client("dynamodb")
 sns = boto3.client("sns") if SNS_TOPIC else None
@@ -47,7 +57,7 @@ cw = boto3.client("cloudwatch")
 
 
 def _month_window(ts: int) -> str:
-    return datetime.datetime.utcfromtimestamp(ts).strftime("%Y-%m")
+    return datetime.datetime.fromtimestamp(ts, datetime.timezone.utc).strftime("%Y-%m")
 
 
 def _rate(model: str, direction: str, tier: str = "standard"):
@@ -110,8 +120,8 @@ def _settle(detail: dict):
         _metric("UnpricedModel", dims={"Model": model[:64]})
 
     key = _idempotency_key(detail)
-    day = datetime.datetime.utcfromtimestamp(ts).strftime("%Y-%m-%d")
-    billing_group = (detail.get("groups") or ["unassigned"])[0]
+    day = datetime.datetime.fromtimestamp(ts, datetime.timezone.utc).strftime("%Y-%m-%d")
+    billing_group = _billing_group(detail.get("groups") or [])
 
     ledger_item = {
         "pk": {"S": f"LEDGER#{day}"},
@@ -137,17 +147,34 @@ def _settle(detail: dict):
     # A GSI on idem lets the sweeper and admin API look up by key.
     counter_key = {"pk": {"S": f"USE#{sub}#{window}"}, "sk": {"S": "COUNTER"}}
 
-    # Settle = actual minus any matching estimate for the same key (the
-    # interceptor stores its estimate under EST#<key>; if present, consume it).
+    # Settle consumes the caller's OPEN admission estimate. The interceptor's
+    # estimate key is a gateway-side hash (sub + body + minute) the app-tier
+    # capture can never reconstruct, so matching is by CONTENT, not key: the
+    # oldest OPEN estimate for the same (sub, model). The OPEN set is small by
+    # construction (bounded by max-stream-duration × request rate), so a
+    # filtered GSI query is cheap.
     est_usd = 0.0
     est_used = False
+    est_pk = None
     try:
-        est = ddb.get_item(
+        page = ddb.query(
             TableName=TABLE,
-            Key={"pk": {"S": f"EST#{key}"}, "sk": {"S": "EST"}},
-            ConsistentRead=True,
-        ).get("Item")
-        if est and est.get("state", {}).get("S") == "OPEN":
+            IndexName="estimates",
+            KeyConditionExpression="#s = :open",
+            FilterExpression="#sub = :sub AND #m = :model",
+            ExpressionAttributeNames={"#s": "state", "#sub": "sub", "#m": "model"},
+            ExpressionAttributeValues={
+                ":open": {"S": "OPEN"},
+                ":sub": {"S": sub},
+                ":model": {"S": model},
+            },
+            ScanIndexForward=True,  # oldest first
+            Limit=50,
+        )
+        items = page.get("Items", [])
+        if items:
+            est = items[0]
+            est_pk = est["pk"]["S"]
             est_usd = float(est.get("usd", {}).get("N", "0"))
             est_used = True
     except ClientError as e:
@@ -184,12 +211,12 @@ def _settle(detail: dict):
             }
         },
     ]
-    if est_used:
+    if est_used and est_pk:
         tx.append(
             {
                 "Update": {
                     "TableName": TABLE,
-                    "Key": {"pk": {"S": f"EST#{key}"}, "sk": {"S": "EST"}},
+                    "Key": {"pk": {"S": est_pk}, "sk": {"S": "EST"}},
                     "UpdateExpression": "SET #s = :settled",
                     "ConditionExpression": "#s = :open",
                     "ExpressionAttributeNames": {"#s": "state"},
@@ -203,12 +230,39 @@ def _settle(detail: dict):
     try:
         ddb.transact_write_items(TransactItems=tx)
     except ClientError as e:
-        if "ConditionalCheckFailed" in str(e) or "TransactionCanceled" in str(e):
-            # first-writer-wins: duplicate event (EventBridge at-least-once) — done.
+        if "TransactionCanceled" not in str(e) and "ConditionalCheckFailed" not in str(e):
+            raise
+        # Two distinct cancellation causes:
+        #  (a) ledger row exists → duplicate event (EventBridge at-least-once) — done;
+        #  (b) the matched estimate was concurrently swept/settled → retry once
+        #      WITHOUT the estimate branch (the actual still must land).
+        dup = ddb.get_item(
+            TableName=TABLE,
+            Key={"pk": ledger_item["pk"], "sk": ledger_item["sk"]},
+            ConsistentRead=True,
+        ).get("Item")
+        if dup:
             log.info(f"duplicate settle skipped for {key}")
             _metric("DuplicateSettles")
             return
-        raise
+        log.info(f"estimate raced for {key}; settling without estimate consumption")
+        ddb.transact_write_items(TransactItems=tx[:2] if not est_used else [
+            tx[0],
+            {
+                "Update": {
+                    "TableName": TABLE,
+                    "Key": counter_key,
+                    "UpdateExpression": "ADD used_usd :d, used_in :i, used_out :o, req_count :one SET updated_at = :now",
+                    "ExpressionAttributeValues": {
+                        ":d": {"N": str(round(usd, 8))},
+                        ":i": {"N": str(tin)},
+                        ":o": {"N": str(tout)},
+                        ":one": {"N": "1"},
+                        ":now": {"N": str(ts)},
+                    },
+                }
+            },
+        ])
 
     if sub not in CANARY_SUBS:
         _metric("SettledUSD", usd, "None")
@@ -216,33 +270,50 @@ def _settle(detail: dict):
     _threshold_check(sub, window)
 
 
+def _resolve_limits(sub: str) -> tuple[float, float]:
+    """Policy precedence: USER# override → DEFAULT → env defaults."""
+    for scope in (f"USER#{sub}", "DEFAULT"):
+        item = ddb.get_item(
+            TableName=TABLE, Key={"pk": {"S": f"POLICY#{scope}"}, "sk": {"S": "POLICY"}}
+        ).get("Item")
+        if item:
+            hard = float(item.get("hard_limit_usd", {}).get("N", "0"))
+            soft = float(item.get("soft_limit_usd", {}).get("N", str(hard * 0.8)))
+            return hard, soft
+    return float(os.environ.get("HARD_DEFAULT_USD", "5")), float(os.environ.get("SOFT_DEFAULT_USD", "4"))
+
+
 def _threshold_check(sub: str, window: str):
-    """Post-settle soft/hard notifications (80%/100%) — best-effort."""
-    if not sns:
-        return
+    """Post-settle: stamp resolved limits onto the counter (the inlet's
+    single-GetItem soft-warn snapshot reads them there) + 80/100% alerts."""
     try:
+        hard, soft = _resolve_limits(sub)
         item = ddb.get_item(
             TableName=TABLE,
             Key={"pk": {"S": f"USE#{sub}#{window}"}, "sk": {"S": "COUNTER"}},
         ).get("Item") or {}
         used = float(item.get("used_usd", {}).get("N", "0")) + max(0.0, float(item.get("est_usd", {}).get("N", "0")))
-        hard = float(item.get("hard_limit_usd", {}).get("N", "0"))
-        if hard <= 0:
-            return
-        pct = used / hard
+        stamped_hard = float(item.get("hard_limit_usd", {}).get("N", "-1"))
         already = item.get("alerted", {}).get("S", "")
-        level = "100" if pct >= 1.0 else ("80" if pct >= 0.8 else "")
-        if level and level != already:
+        level = "" if hard <= 0 else ("100" if used >= hard else ("80" if used >= 0.8 * hard else ""))
+
+        if abs(stamped_hard - hard) > 1e-9 or (level and level != already):
+            expr = "SET hard_limit_usd = :h, soft_limit_usd = :s"
+            vals = {":h": {"N": str(hard)}, ":s": {"N": str(soft)}}
+            if level and level != already:
+                expr += ", alerted = :l"
+                vals[":l"] = {"S": level}
+            ddb.update_item(
+                TableName=TABLE,
+                Key={"pk": {"S": f"USE#{sub}#{window}"}, "sk": {"S": "COUNTER"}},
+                UpdateExpression=expr,
+                ExpressionAttributeValues=vals,
+            )
+        if sns and level and level != already:
             sns.publish(
                 TopicArn=SNS_TOPIC,
                 Subject=f"Metering: user at {level}% of quota",
                 Message=json.dumps({"sub": sub, "window": window, "used_usd": used, "hard_limit_usd": hard}),
-            )
-            ddb.update_item(
-                TableName=TABLE,
-                Key={"pk": {"S": f"USE#{sub}#{window}"}, "sk": {"S": "COUNTER"}},
-                UpdateExpression="SET alerted = :l",
-                ExpressionAttributeValues={":l": {"S": level}},
             )
     except Exception as e:  # noqa: BLE001
         log.warning(f"threshold check failed for {sub}: {e}")

@@ -20,6 +20,7 @@ counters.
 import datetime
 import logging
 import os
+import time
 
 import boto3
 
@@ -67,7 +68,7 @@ def handler(event, context):
                 ":i": {"N": str(agg["tin"])},
                 ":o": {"N": str(agg["tout"])},
                 ":n": {"N": str(agg["n"])},
-                ":now": {"N": str(int(datetime.datetime.utcnow().timestamp()))},
+                ":now": {"N": str(int(time.time()))},
             },
         )
     if adds:

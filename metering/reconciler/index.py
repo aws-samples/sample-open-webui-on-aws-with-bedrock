@@ -101,7 +101,7 @@ def _metric(name: str, value: float, dims: dict | None = None, unit: str = "None
 
 
 def handler(event, context):
-    day = (datetime.datetime.utcnow().date() - datetime.timedelta(days=2)).isoformat()
+    day = (datetime.datetime.now(datetime.timezone.utc).date() - datetime.timedelta(days=2)).isoformat()
     ledger = _ledger_sums(day)
     billed = _billed_sums(day)
 

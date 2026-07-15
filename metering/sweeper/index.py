@@ -52,12 +52,12 @@ def _metric(name: str, value: float, unit: str = "Count"):
 def _resolve(est: dict, now: int):
     key = est["pk"]["S"]  # EST#<idem-key>
     sub = est.get("sub", {}).get("S", "unknown")
-    window = est.get("window", {}).get("S", datetime.datetime.utcfromtimestamp(now).strftime("%Y-%m"))
+    window = est.get("window", {}).get("S", datetime.datetime.fromtimestamp(now, datetime.timezone.utc).strftime("%Y-%m"))
     usd = float(est.get("usd", {}).get("N", "0"))
     counter_key = {"pk": {"S": f"USE#{sub}#{window}"}, "sk": {"S": "COUNTER"}}
 
     if MODE == "settle":
-        day = datetime.datetime.utcfromtimestamp(now).strftime("%Y-%m-%d")
+        day = datetime.datetime.fromtimestamp(now, datetime.timezone.utc).strftime("%Y-%m-%d")
         tx = [
             {
                 "Update": {

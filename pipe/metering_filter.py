@@ -91,6 +91,33 @@ class Filter:
     def _emit_capture_failure(self, err: Exception, where: str):
         log.warning(f"metering_filter: {where} failed (chat unaffected): {err.__class__.__name__}: {err}")
 
+    @staticmethod
+    def _oauth_sub(user: dict) -> str:
+        """The Cognito subject — the SAME identity the gateway interceptor
+        counters key on. Open WebUI's UserModel carries it as
+        oauth = {"<provider>": {"sub": "..."}} (v0.10.2); there is no flat
+        oauth_sub field. Fall back to the app-internal user id (attribution
+        still works, but won't join with interceptor-side counters)."""
+        oauth = user.get("oauth") or {}
+        if isinstance(oauth, dict):
+            for entry in oauth.values():
+                if isinstance(entry, dict) and entry.get("sub"):
+                    return str(entry["sub"])
+        return str(user.get("id") or "unknown")
+
+    @staticmethod
+    async def _group_names(user: dict) -> list:
+        """The user's Open WebUI groups (synced from cognito:groups when OAuth
+        group management is on). model_dump() has no groups field, so query
+        the Groups table; failure just means 'unassigned'."""
+        try:
+            from open_webui.models.groups import Groups
+
+            groups = await Groups.get_groups_by_member_id(user.get("id") or "")
+            return [g.name for g in groups]
+        except Exception:  # noqa: BLE001
+            return []
+
     # ------------------------------------------------------------------ #
     # inlet — soft-warn toast only; NEVER raises
     # ------------------------------------------------------------------ #
@@ -99,8 +126,8 @@ class Filter:
         try:
             if not (self.valves.METERING_TABLE and __user__ and __event_emitter__):
                 return body
-            sub = (__user__ or {}).get("oauth_sub") or (__user__ or {}).get("id") or ""
-            if not sub:
+            sub = self._oauth_sub(__user__ or {})
+            if not sub or sub == "unknown":
                 return body
             now = time.time()
             if now - self._warned_at.get(sub, 0) < self.valves.WARN_SNOOZE_SECONDS:
@@ -111,7 +138,7 @@ class Filter:
             window = time.strftime("%Y-%m")
             resp = ddb.get_item(
                 TableName=self.valves.METERING_TABLE,
-                Key={"pk": {"S": f"USE#{sub}#{window}"}},
+                Key={"pk": {"S": f"USE#{sub}#{window}"}, "sk": {"S": "COUNTER"}},
                 ProjectionExpression="used_usd, est_usd, soft_limit_usd, hard_limit_usd",
             )
             item = resp.get("Item")
@@ -150,17 +177,21 @@ class Filter:
 
             user = __user__ or {}
             meta = __metadata__ or {}
+            group_names = await self._group_names(user)
             entries = []
-            for msg in body.get("messages", []):
-                if msg.get("role") != "assistant":
-                    continue
+            # outlet receives the FULL message list every turn — only the last
+            # assistant message is this turn's completion (earlier ones were
+            # already captured on their own turns; settle idempotency would
+            # drop re-emits anyway, but don't send them at all).
+            assistant_msgs = [m for m in body.get("messages", []) if m.get("role") == "assistant"]
+            for msg in assistant_msgs[-1:]:
                 usage = msg.get("usage") or {}
                 if not usage:
                     continue
                 detail = {
-                    "sub": user.get("oauth_sub") or user.get("id") or "unknown",
+                    "sub": self._oauth_sub(user),
                     "user_id": user.get("id") or "unknown",
-                    "groups": [g.get("name") if isinstance(g, dict) else str(g) for g in (user.get("groups") or [])],
+                    "groups": group_names,
                     "model": body.get("model") or msg.get("model") or "unknown",
                     "chat_id": body.get("chat_id") or meta.get("chat_id") or "",
                     "message_id": msg.get("id") or "",

@@ -116,6 +116,7 @@ if (meteringEnabled) {
     env,
     userPool: authStack.userPool,
     userPoolClient: authStack.userPoolClient,
+    canaryClient: gatewayStack.canaryClient!,
     gatewayId: gatewayStack.gatewayId,
     gatewayInferenceUrl: gatewayStack.gatewayInferenceUrl,
     environmentPrefix: envConfig?.environment,

@@ -91,8 +91,12 @@ cw = boto3.client("cloudwatch")
 
 # ── JWKS cache (refresh on unknown kid; never fail-open per-request unbounded) ─
 _jwks: dict = {"keys": {}, "fetched": 0.0}
-# per-container degradation grace tally {sub: count}; resets on cold start
+# per-container degradation grace tally {sub: count}, reset every 5 minutes —
+# a sustained store outage degrades to RATE-LIMITED fail-open (grace budget per
+# window), never a permanent block (the deploy-order gap would otherwise 429
+# users between gateway-deploy and metering-table creation)
 _grace: dict = {}
+_grace_window: list = [0]
 
 
 def _metric(name: str, value: float = 1, dims: dict | None = None):
@@ -305,6 +309,16 @@ def _floor_debit(sub: str, groups: list, est_usd: float, parsed: dict, path: str
     model = str(parsed.get("model", "")).split("/", 1)[-1]
     lane = next((s.strip("/") for s in INFERENCE_SUFFIXES if path.endswith(s)), "unknown")
     billing_group = _billing_group(groups)
+    # RPM tick FIRST — every admitted request counts against the rate bucket,
+    # including gateway retries and identical resends (else repeat traffic is
+    # invisible to rate limiting).
+    ddb.update_item(
+        TableName=TABLE,
+        Key={"pk": {"S": f"RPM#{sub}#{minute}"}, "sk": {"S": "RPM"}},
+        UpdateExpression="ADD n :one SET #t = :ttl",
+        ExpressionAttributeNames={"#t": "ttl"},
+        ExpressionAttributeValues={":one": {"N": "1"}, ":ttl": {"N": str(now + 120)}},
+    )
     try:
         ddb.put_item(
             TableName=TABLE,
@@ -325,19 +339,11 @@ def _floor_debit(sub: str, groups: list, est_usd: float, parsed: dict, path: str
         )
     except ddb.exceptions.ConditionalCheckFailedException:
         return  # duplicate admission (gateway retry) — estimate already in force
-    # counter + rpm ticks (best-effort; the estimate row is the durable record)
     ddb.update_item(
         TableName=TABLE,
         Key={"pk": {"S": f"USE#{sub}#{window}"}, "sk": {"S": "COUNTER"}},
         UpdateExpression="ADD est_usd :e SET updated_at = :now",
         ExpressionAttributeValues={":e": {"N": str(est_usd)}, ":now": {"N": str(now)}},
-    )
-    ddb.update_item(
-        TableName=TABLE,
-        Key={"pk": {"S": f"RPM#{sub}#{minute}"}, "sk": {"S": "RPM"}},
-        UpdateExpression="ADD n :one SET #t = :ttl",
-        ExpressionAttributeNames={"#t": "ttl"},
-        ExpressionAttributeValues={":one": {"N": "1"}, ":ttl": {"N": str(now + 120)}},
     )
 
 
@@ -412,6 +418,10 @@ def _handle(event):
     try:
         allowed, deny_body, est_usd = _admit(sub, groups, body_bytes, parsed, path)
     except Exception as e:  # noqa: BLE001 — quota-store degradation: bounded fail-open
+        win = int(time.time() // 300)
+        if _grace_window[0] != win:
+            _grace_window[0] = win
+            _grace.clear()
         n = _grace.get(sub, 0) + 1
         _grace[sub] = n
         _metric("DegradedChecks", dims={"Reason": "store"})

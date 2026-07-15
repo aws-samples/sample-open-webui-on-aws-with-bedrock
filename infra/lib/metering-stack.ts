@@ -25,6 +25,12 @@ import { Construct } from 'constructs';
 export interface MeteringStackProps extends cdk.StackProps {
   userPool: cognito.UserPool;
   userPoolClient: cognito.UserPoolClient;
+  /**
+   * The gateway stack's canary app client (USER_PASSWORD_AUTH, no secret,
+   * allow-listed on the gateway). The main app client is SRP+secret and
+   * cannot authenticate headlessly — the canaries MUST use this one.
+   */
+  canaryClient: cognito.UserPoolClient;
   /** Gateway id (dashboard links + canary target). */
   gatewayId: string;
   /** Gateway inference base URL (…/inference), for the canaries. */
@@ -117,6 +123,11 @@ export class MeteringStack extends cdk.Stack {
         TABLE: this.table.tableName,
         PRICE_MAP: priceMapEnv,
         SNS_TOPIC: this.alertsTopic.topicArn,
+        GROUP_ORDER: JSON.stringify(
+          JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'config', 'metering-groups.json'), 'utf-8')).groups ?? [],
+        ),
+        HARD_DEFAULT_USD: '5',
+        SOFT_DEFAULT_USD: '4',
       },
       logRetention: logs.RetentionDays.ONE_MONTH,
       deadLetterQueue: debitDlq,
@@ -128,7 +139,7 @@ export class MeteringStack extends cdk.Stack {
 
     new events.Rule(this, 'UsageRule', {
       eventBus: this.bus,
-      description: 'Usage events from the seeded metering filter and the gateway interceptor',
+      description: 'Usage events from the seeded metering filter (the interceptor writes estimates to DynamoDB directly)',
       eventPattern: { source: ['openwebui.metering'], detailType: ['usage'] },
       targets: [
         new targets.LambdaFunction(debitFn, {
@@ -226,7 +237,7 @@ export class MeteringStack extends cdk.Stack {
       TABLE: this.table.tableName,
       BUS: this.bus.eventBusName,
       USER_POOL_ID: props.userPool.userPoolId,
-      CLIENT_ID: props.userPoolClient.userPoolClientId,
+      CLIENT_ID: props.canaryClient.userPoolClientId,
       PASSWORD_SECRET_ARN: canaryPassword.secretArn,
       GATEWAY_URL_PARAM: gatewayUrlParam.parameterName,
     };
