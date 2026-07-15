@@ -383,14 +383,28 @@ fi
 # (gitignored; installed here at deploy time.)
 if [[ "$SKIP_CDK_DEPLOY" != "true" ]]; then
   header "Vendoring provisioner dependencies"
+  PIP="python3 -m pip"; command -v pip3 >/dev/null 2>&1 && PIP="pip3"
   PROV_DIR="$SCRIPT_DIR/gateway/provisioner"
   if [[ ! -d "$PROV_DIR/boto3" ]]; then
-    PIP="python3 -m pip"; command -v pip3 >/dev/null 2>&1 && PIP="pip3"
     $PIP install --quiet --target "$PROV_DIR" -r "$PROV_DIR/requirements.txt" \
       && log "boto3 vendored into gateway/provisioner" \
       || { err "Failed to vendor boto3 (need python3 + pip)."; exit 1; }
   else
     log "provisioner boto3 already vendored"
+  fi
+
+  # The opt-in model-refresher Lambda (enableModelRefresh) also needs a current
+  # boto3 + requests. Only vendor when the flag is on, so default deploys stay lean.
+  if [[ "$(cd "$INFRA_DIR" && npx --no-install cdk context 2>/dev/null | grep -c 'enableModelRefresh.*true')" != "0" \
+        || "$ENABLE_MODEL_REFRESH" == "true" ]]; then
+    REFR_DIR="$SCRIPT_DIR/gateway/refresher"
+    if [[ ! -d "$REFR_DIR/boto3" ]]; then
+      $PIP install --quiet --target "$REFR_DIR" -r "$REFR_DIR/requirements.txt" \
+        && log "boto3 + requests vendored into gateway/refresher" \
+        || { err "Failed to vendor refresher deps (need python3 + pip)."; exit 1; }
+    else
+      log "refresher deps already vendored"
+    fi
   fi
 fi
 

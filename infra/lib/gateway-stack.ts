@@ -8,6 +8,8 @@ import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as cr from 'aws-cdk-lib/custom-resources';
+import * as scheduler from 'aws-cdk-lib/aws-scheduler';
+import * as sns from 'aws-cdk-lib/aws-sns';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -289,6 +291,87 @@ export class GatewayStack extends cdk.Stack {
       },
     });
     target.node.addDependency(gateway);
+
+    // ── Opt-in: scheduled model-capability refresher ───────────────────────
+    // Bedrock Mantle adds/moves models over time. When enabled, a scheduled
+    // Lambda re-probes the catalog and refreshes the interceptor's MODEL_CAPS
+    // (and re-snapshots the connector so new models route, not just list),
+    // with a collapse-guard + SNS diff. DEFAULT OFF: the base sample is
+    // unchanged unless `-c enableModelRefresh=true` is passed.
+    const enableRefresh =
+      this.node.tryGetContext('enableModelRefresh') === true ||
+      this.node.tryGetContext('enableModelRefresh') === 'true';
+
+    if (enableRefresh) {
+      const refreshRateHours = Number(this.node.tryGetContext('modelRefreshRateHours') ?? 24);
+
+      // Optional SNS topic for diff/alert notifications.
+      const alertTopic = new sns.Topic(this, 'ModelRefreshAlerts', {
+        displayName: `${envPrefix}open-webui model-refresh`,
+      });
+
+      const refresher = new lambda.Function(this, 'ModelRefresher', {
+        runtime: lambda.Runtime.PYTHON_3_12,
+        handler: 'index.handler',
+        code: lambda.Code.fromAsset(path.join(__dirname, '..', '..', 'gateway', 'refresher')),
+        // The probe issues up to 5 signed calls per model across the catalog;
+        // give it room but bound it.
+        timeout: cdk.Duration.minutes(10),
+        memorySize: 256,
+        environment: {
+          INTERCEPTOR_FUNCTION_NAME: interceptor.functionName,
+          GATEWAY_ID: this.gatewayId,
+          CONNECTOR_TARGET_NAME: 'bedrock',
+          CONNECTOR_ID: 'bedrock-mantle',
+          MANTLE_REGION: mantleRegion,
+          SNS_TOPIC_ARN: alertTopic.topicArn,
+          COLLAPSE_MIN_RATIO: '0.5',
+        },
+        logRetention: logs.RetentionDays.ONE_MONTH,
+      });
+
+      // Probe bedrock-mantle (its own IAM service prefix).
+      refresher.addToRolePolicy(new iam.PolicyStatement({
+        actions: ['bedrock-mantle:*'],
+        resources: ['*'],
+      }));
+      // Update the interceptor's MODEL_CAPS (read to diff + write to apply).
+      refresher.addToRolePolicy(new iam.PolicyStatement({
+        actions: ['lambda:GetFunctionConfiguration', 'lambda:UpdateFunctionConfiguration'],
+        resources: [interceptor.functionArn],
+      }));
+      // Re-snapshot the connector target (list to find it, update to refresh).
+      refresher.addToRolePolicy(new iam.PolicyStatement({
+        actions: [
+          'bedrock-agentcore:ListGatewayTargets',
+          'bedrock-agentcore:GetGatewayTarget',
+          'bedrock-agentcore:UpdateGatewayTarget',
+        ],
+        resources: ['*'],
+      }));
+      alertTopic.grantPublish(refresher);
+
+      // EventBridge Scheduler → invoke the refresher on a fixed cadence.
+      const schedulerRole = new iam.Role(this, 'ModelRefreshSchedulerRole', {
+        assumedBy: new iam.ServicePrincipal('scheduler.amazonaws.com'),
+      });
+      refresher.grantInvoke(schedulerRole);
+
+      new scheduler.CfnSchedule(this, 'ModelRefreshSchedule', {
+        flexibleTimeWindow: { mode: 'FLEXIBLE', maximumWindowInMinutes: 15 },
+        scheduleExpression: `rate(${refreshRateHours} hours)`,
+        target: {
+          arn: refresher.functionArn,
+          roleArn: schedulerRole.roleArn,
+        },
+        description: 'Refresh gateway model capabilities from live bedrock-mantle (opt-in).',
+      });
+
+      new cdk.CfnOutput(this, 'ModelRefreshTopicArn', {
+        value: alertTopic.topicArn,
+        description: 'Subscribe to receive model-refresh diffs and collapse-guard alerts.',
+      });
+    }
 
     // ── Outputs (consumed by the compute stack's seeder + deploy.sh) ───────
     new cdk.CfnOutput(this, 'GatewayId', { value: this.gatewayId });

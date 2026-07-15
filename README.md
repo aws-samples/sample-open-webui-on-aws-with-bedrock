@@ -153,6 +153,8 @@ infra/                     CDK app (TypeScript)
 gateway/
   interceptor/index.py     REQUEST interceptor: capability-filtered model listing
   provisioner/index.py     custom resource: creates the bedrock-mantle inference target
+  refresher/index.py       opt-in scheduled model refresher (enableModelRefresh)
+  refresher/probe_core.py  shared probe logic (used by the CLI + the refresher)
 pipe/
   gateway_anthropic_pipe.py  Claude manifold pipe (per-user OAuth to the gateway)
   seed.py                    installs the pipe + 2 OpenAI connections at boot
