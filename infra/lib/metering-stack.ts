@@ -253,7 +253,7 @@ export class MeteringStack extends cdk.Stack {
         code: lambda.Code.fromAsset(path.join(__dirname, '..', '..', 'metering', 'canary')),
         timeout: cdk.Duration.minutes(2),
         memorySize: 256,
-        environment: { ...canaryEnvCommon, MODE: mode, USERNAME: `metering-${mode}-canary` },
+        environment: { ...canaryEnvCommon, MODE: mode, USERNAME: `metering-${mode}-canary@example.invalid` },
         logRetention: logs.RetentionDays.ONE_MONTH,
       });
       this.table.grantReadWriteData(fn);
@@ -341,7 +341,9 @@ export class MeteringStack extends cdk.Stack {
     const authorizer = new apigwv2Authorizers.HttpJwtAuthorizer(
       'CognitoJwt',
       `https://cognito-idp.${cdk.Aws.REGION}.amazonaws.com/${props.userPool.userPoolId}`,
-      { jwtAudience: [props.userPoolClient.userPoolClientId] },
+      // Both app clients: the OWUI client (real admins hold its tokens) and
+      // the canary/CLI client (headless operators + verification tooling).
+      { jwtAudience: [props.userPoolClient.userPoolClientId, props.canaryClient.userPoolClientId] },
     );
     const integration = new apigwv2Integrations.HttpLambdaIntegration('AdminIntegration', adminFn);
     for (const [routePath, methods] of [

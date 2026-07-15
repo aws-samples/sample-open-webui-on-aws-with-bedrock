@@ -43,7 +43,7 @@ USER_POOL_ID = os.environ["USER_POOL_ID"]
 CLIENT_ID = os.environ["CLIENT_ID"]
 PASSWORD_SECRET_ARN = os.environ["PASSWORD_SECRET_ARN"]
 GATEWAY_URL_PARAM = os.environ["GATEWAY_URL_PARAM"]
-USERNAME = os.environ.get("USERNAME", f"metering-{MODE}-canary")
+USERNAME = os.environ.get("USERNAME", f"metering-{MODE}-canary@example.invalid")
 MODEL = os.environ.get("CANARY_MODEL", "qwen.qwen3-32b")
 TARGET_PREFIX = os.environ.get("TARGET_PREFIX", "bedrock/")
 
