@@ -1,0 +1,8 @@
+{
+  "_comment": "Cost-center groups for the opt-in metering module (docs/METERING.md). Each entry gets a Bedrock (mantle) Project named owui-metering-<group>; the gateway interceptor maps the caller's cognito:groups to these projects and injects the attribution header per request. Users in none of these groups attribute to the catch-all 'unassigned' project. Group names must match Cognito group names. Order matters: the FIRST matching group is the user's billing group.",
+  "groups": [
+    "admins",
+    "power-users",
+    "basic-users"
+  ]
+}

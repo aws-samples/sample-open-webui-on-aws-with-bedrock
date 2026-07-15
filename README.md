@@ -168,6 +168,12 @@ Infrastructure (VPC/ALB/ECS/Aurora/Redis/CloudFront/gateway/Lambdas) is a small
 fixed monthly cost; the dominant driver is Bedrock token consumption, which is
 pay-per-use. See [`docs/COST_ANALYSIS_20K_USERS.md`](docs/COST_ANALYSIS_20K_USERS.md).
 
+**Optional metering module** (`./deploy.sh --metering`, off by default): per-user
+token/dollar metering, per-team cost attribution via Bedrock Projects, and
+operator-set quotas enforced at the gateway (blocked users see the reason in
+the chat). When disabled, the base sample is byte-identical. See
+[`docs/METERING.md`](docs/METERING.md).
+
 ## Security
 
 Private ALB (CloudFront-only ingress via VPC origin), all compute/data in

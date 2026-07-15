@@ -40,3 +40,7 @@ gateway/provisioner/python_dateutil*/
 gateway/provisioner/urllib3*/
 gateway/provisioner/six*
 gateway/provisioner/bin/
+infra/cdk.out.baseline/
+infra/cdk.out.g0off/
+infra/cdk.out.g0on/
+infra/cdk.out.*/
