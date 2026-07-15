@@ -72,6 +72,7 @@ Options:
   --env-only           Update ECS env vars from .env and restart (no CDK deploy)
   --skip-bootstrap     Skip CDK bootstrap step
   --skip-cdk           Skip CDK deploy (alias for --env-only)
+  --metering           Enable the opt-in metering/quota module (docs/METERING.md)
   --yes                Skip confirmation prompts
   --help               Show this help
 
@@ -97,6 +98,7 @@ while [[ $# -gt 0 ]]; do
     --env-only)      ENV_ONLY=true; SKIP_CDK_DEPLOY=true; SKIP_CDK_BOOTSTRAP=true; shift;;
     --skip-bootstrap) SKIP_CDK_BOOTSTRAP=true; shift;;
     --skip-cdk)      ENV_ONLY=true; SKIP_CDK_DEPLOY=true; SKIP_CDK_BOOTSTRAP=true; shift;;
+    --metering)      METERING=on; shift;;
     --yes)           SKIP_CONFIRM=true; shift;;
     --help)          usage;;
     *) err "Unknown option: $1"; usage;;
@@ -412,10 +414,14 @@ if [[ "$SKIP_CDK_DEPLOY" != "true" ]]; then
   cd "$INFRA_DIR"
   npm install --silent
 
-  info "Deploying all stacks (Network → Data → Auth → Gateway → Compute)..."
+  if [[ "${METERING:-off}" == "on" ]]; then
+    info "Deploying all stacks (Network → Data → Auth → Gateway → Compute → Metering)..."
+  else
+    info "Deploying all stacks (Network → Data → Auth → Gateway → Compute)..."
+  fi
   info "No image build — ECS pulls the unmodified official Open WebUI image by digest."
   CDK_DEFAULT_ACCOUNT="$ACCOUNT_ID" CDK_DEFAULT_REGION="$AWS_REGION" \
-    $CDK deploy --all --require-approval "$([ "$SKIP_CONFIRM" = "true" ] && echo never || echo broadening)"
+    $CDK deploy --all -c "metering=${METERING:-off}" --require-approval "$([ "$SKIP_CONFIRM" = "true" ] && echo never || echo broadening)"
   log "CDK deploy complete"
 fi
 
