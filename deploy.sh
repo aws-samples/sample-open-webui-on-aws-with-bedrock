@@ -396,7 +396,7 @@ if [[ "$SKIP_CDK_DEPLOY" != "true" ]]; then
   # The opt-in model-refresher Lambda (enableModelRefresh) also needs a current
   # boto3 + requests. Only vendor when the flag is on, so default deploys stay lean.
   if [[ "$(cd "$INFRA_DIR" && npx --no-install cdk context 2>/dev/null | grep -c 'enableModelRefresh.*true')" != "0" \
-        || "$ENABLE_MODEL_REFRESH" == "true" ]]; then
+        || "${ENABLE_MODEL_REFRESH:-false}" == "true" ]]; then
     REFR_DIR="$SCRIPT_DIR/gateway/refresher"
     if [[ ! -d "$REFR_DIR/boto3" ]]; then
       $PIP install --quiet --target "$REFR_DIR" -r "$REFR_DIR/requirements.txt" \
