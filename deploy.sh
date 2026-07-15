@@ -420,8 +420,19 @@ if [[ "$SKIP_CDK_DEPLOY" != "true" ]]; then
     info "Deploying all stacks (Network → Data → Auth → Gateway → Compute)..."
   fi
   info "No image build — ECS pulls the unmodified official Open WebUI image by digest."
+  # The model-refresher Lambda is enabled by the CDK context flag
+  # `enableModelRefresh`. Forward it from the ENABLE_MODEL_REFRESH env var (.env
+  # or shell) so the same switch that vendored its deps above also deploys it —
+  # otherwise the env var would vendor but never turn the Lambda on. Optional
+  # cadence via MODEL_REFRESH_RATE_HOURS (default 24 in the stack).
+  REFRESH_CTX=()
+  if [[ "${ENABLE_MODEL_REFRESH:-false}" == "true" ]]; then
+    REFRESH_CTX+=(-c "enableModelRefresh=true")
+    [[ -n "${MODEL_REFRESH_RATE_HOURS:-}" ]] && REFRESH_CTX+=(-c "modelRefreshRateHours=${MODEL_REFRESH_RATE_HOURS}")
+    info "Model-capability refresher: ENABLED (enableModelRefresh=true)"
+  fi
   CDK_DEFAULT_ACCOUNT="$ACCOUNT_ID" CDK_DEFAULT_REGION="$AWS_REGION" \
-    $CDK deploy --all -c "metering=${METERING:-off}" --require-approval "$([ "$SKIP_CONFIRM" = "true" ] && echo never || echo broadening)"
+    $CDK deploy --all -c "metering=${METERING:-off}" "${REFRESH_CTX[@]}" --require-approval "$([ "$SKIP_CONFIRM" = "true" ] && echo never || echo broadening)"
   log "CDK deploy complete"
 fi
 
