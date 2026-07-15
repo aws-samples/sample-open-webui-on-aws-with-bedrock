@@ -72,6 +72,7 @@ Options:
   --env-only           Update ECS env vars from .env and restart (no CDK deploy)
   --skip-bootstrap     Skip CDK bootstrap step
   --skip-cdk           Skip CDK deploy (alias for --env-only)
+  --metering           Enable the opt-in metering/quota module (docs/METERING.md)
   --yes                Skip confirmation prompts
   --help               Show this help
 
@@ -97,6 +98,7 @@ while [[ $# -gt 0 ]]; do
     --env-only)      ENV_ONLY=true; SKIP_CDK_DEPLOY=true; SKIP_CDK_BOOTSTRAP=true; shift;;
     --skip-bootstrap) SKIP_CDK_BOOTSTRAP=true; shift;;
     --skip-cdk)      ENV_ONLY=true; SKIP_CDK_DEPLOY=true; SKIP_CDK_BOOTSTRAP=true; shift;;
+    --metering)      METERING=on; shift;;
     --yes)           SKIP_CONFIRM=true; shift;;
     --help)          usage;;
     *) err "Unknown option: $1"; usage;;
@@ -381,14 +383,28 @@ fi
 # (gitignored; installed here at deploy time.)
 if [[ "$SKIP_CDK_DEPLOY" != "true" ]]; then
   header "Vendoring provisioner dependencies"
+  PIP="python3 -m pip"; command -v pip3 >/dev/null 2>&1 && PIP="pip3"
   PROV_DIR="$SCRIPT_DIR/gateway/provisioner"
   if [[ ! -d "$PROV_DIR/boto3" ]]; then
-    PIP="python3 -m pip"; command -v pip3 >/dev/null 2>&1 && PIP="pip3"
     $PIP install --quiet --target "$PROV_DIR" -r "$PROV_DIR/requirements.txt" \
       && log "boto3 vendored into gateway/provisioner" \
       || { err "Failed to vendor boto3 (need python3 + pip)."; exit 1; }
   else
     log "provisioner boto3 already vendored"
+  fi
+
+  # The opt-in model-refresher Lambda (enableModelRefresh) also needs a current
+  # boto3 + requests. Only vendor when the flag is on, so default deploys stay lean.
+  if [[ "$(cd "$INFRA_DIR" && npx --no-install cdk context 2>/dev/null | grep -c 'enableModelRefresh.*true')" != "0" \
+        || "$ENABLE_MODEL_REFRESH" == "true" ]]; then
+    REFR_DIR="$SCRIPT_DIR/gateway/refresher"
+    if [[ ! -d "$REFR_DIR/boto3" ]]; then
+      $PIP install --quiet --target "$REFR_DIR" -r "$REFR_DIR/requirements.txt" \
+        && log "boto3 + requests vendored into gateway/refresher" \
+        || { err "Failed to vendor refresher deps (need python3 + pip)."; exit 1; }
+    else
+      log "refresher deps already vendored"
+    fi
   fi
 fi
 
@@ -398,10 +414,14 @@ if [[ "$SKIP_CDK_DEPLOY" != "true" ]]; then
   cd "$INFRA_DIR"
   npm install --silent
 
-  info "Deploying all stacks (Network → Data → Auth → Gateway → Compute)..."
+  if [[ "${METERING:-off}" == "on" ]]; then
+    info "Deploying all stacks (Network → Data → Auth → Gateway → Compute → Metering)..."
+  else
+    info "Deploying all stacks (Network → Data → Auth → Gateway → Compute)..."
+  fi
   info "No image build — ECS pulls the unmodified official Open WebUI image by digest."
   CDK_DEFAULT_ACCOUNT="$ACCOUNT_ID" CDK_DEFAULT_REGION="$AWS_REGION" \
-    $CDK deploy --all --require-approval "$([ "$SKIP_CONFIRM" = "true" ] && echo never || echo broadening)"
+    $CDK deploy --all -c "metering=${METERING:-off}" --require-approval "$([ "$SKIP_CONFIRM" = "true" ] && echo never || echo broadening)"
   log "CDK deploy complete"
 fi
 

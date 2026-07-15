@@ -10,6 +10,7 @@ import { DataStack } from '../lib/data-stack';
 import { AuthStack } from '../lib/auth-stack';
 import { GatewayStack } from '../lib/gateway-stack';
 import { ComputeStack } from '../lib/compute-stack';
+import { MeteringStack } from '../lib/metering-stack';
 import { EnvironmentConfig, getDevConfig, getProdConfig } from '../lib/environment-config';
 
 const app = new cdk.App();
@@ -33,6 +34,11 @@ function getConfig(key: string): string | undefined {
 
 // Environment-aware configuration
 const environment = app.node.tryGetContext('environment') as string | undefined;
+
+// Opt-in metering module (docs/METERING.md). OFF unless -c metering=on
+// (deploy.sh --metering). When off, nothing below references it and the base
+// five stacks are unaffected.
+const meteringEnabled = (getConfig('metering') ?? 'off') === 'on';
 
 let envConfig: EnvironmentConfig | undefined;
 if (environment === 'dev') {
@@ -97,8 +103,26 @@ const gatewayStack = new GatewayStack(app, `${prefix}Gateway`, {
   userPool: authStack.userPool,
   userPoolClient: authStack.userPoolClient,
   environmentPrefix: envConfig?.environment,
+  metering: meteringEnabled,
 });
 gatewayStack.addDependency(authStack);
+
+// Metering Stack — opt-in; synthesized only when the flag is on. Created
+// before Compute so the compute stack can wire the seeded filter to the
+// metering bus/table.
+let meteringStack: MeteringStack | undefined;
+if (meteringEnabled) {
+  meteringStack = new MeteringStack(app, `${prefix}Metering`, {
+    env,
+    userPool: authStack.userPool,
+    userPoolClient: authStack.userPoolClient,
+    canaryClient: gatewayStack.canaryClient!,
+    gatewayId: gatewayStack.gatewayId,
+    gatewayInferenceUrl: gatewayStack.gatewayInferenceUrl,
+    environmentPrefix: envConfig?.environment,
+  });
+  meteringStack.addDependency(gatewayStack);
+}
 
 // Compute Stack
 const computeStack = new ComputeStack(app, `${prefix}Compute`, {
@@ -120,9 +144,15 @@ const computeStack = new ComputeStack(app, `${prefix}Compute`, {
   enableAutoScaling: envConfig?.enableAutoScaling,
   environmentPrefix: envConfig?.environment,
   gatewayInferenceUrl: gatewayStack.gatewayInferenceUrl,
+  metering: meteringStack
+    ? { busName: meteringStack.bus.eventBusName, tableName: meteringStack.table.tableName }
+    : undefined,
 });
 computeStack.addDependency(dataStack);
 computeStack.addDependency(authStack);
 computeStack.addDependency(gatewayStack);
+if (meteringStack) {
+  computeStack.addDependency(meteringStack);
+}
 
 app.synth();

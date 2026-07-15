@@ -54,6 +54,16 @@ export interface ComputeStackProps extends cdk.StackProps {
   gatewayInferenceUrl: string;
   /** Region whose bedrock-mantle endpoint backs the gateway (for the Claude pipe's discovery). */
   mantleRegion?: string;
+  /**
+   * Opt-in metering module wiring (docs/METERING.md). Absent (the default)
+   * ⇒ nothing metering-related is added and the task definition is unchanged.
+   */
+  metering?: {
+    /** EventBridge bus name the seeded filter publishes usage events to. */
+    busName: string;
+    /** Metering table name (the filter's read-only soft-warn snapshot). */
+    tableName: string;
+  };
 }
 
 export class ComputeStack extends cdk.Stack {
@@ -161,11 +171,39 @@ export class ComputeStack extends cdk.Stack {
     });
     pipeAsset.grantRead(taskRole);
     seedAsset.grantRead(taskRole);
-    const pipeBootstrap =
+    let pipeBootstrap =
       `(python -c "import boto3; s3 = boto3.client('s3'); ` +
       `s3.download_file('${pipeAsset.s3BucketName}', '${pipeAsset.s3ObjectKey}', '/tmp/gateway_anthropic_pipe.py'); ` +
       `s3.download_file('${seedAsset.s3BucketName}', '${seedAsset.s3ObjectKey}', '/tmp/seed.py')" && ` +
       `(python /tmp/seed.py >/proc/1/fd/1 2>&1 &)) ; `;
+
+    // Opt-in metering module: deliver + seed the usage-metering filter the same
+    // way (own assets + own seeder — pipe/seed.py stays byte-identical so the
+    // off-state lean-core gate holds). Only reached when props.metering is set.
+    if (props.metering) {
+      const meterFilterAsset = new Asset(this, 'MeteringFilterAsset', {
+        path: path.join(__dirname, '..', '..', 'pipe', 'metering_filter.py'),
+      });
+      const meterSeedAsset = new Asset(this, 'MeteringSeedAsset', {
+        path: path.join(__dirname, '..', '..', 'pipe', 'metering_seed.py'),
+      });
+      meterFilterAsset.grantRead(taskRole);
+      meterSeedAsset.grantRead(taskRole);
+      pipeBootstrap +=
+        `(python -c "import boto3; s3 = boto3.client('s3'); ` +
+        `s3.download_file('${meterFilterAsset.s3BucketName}', '${meterFilterAsset.s3ObjectKey}', '/tmp/metering_filter.py'); ` +
+        `s3.download_file('${meterSeedAsset.s3BucketName}', '${meterSeedAsset.s3ObjectKey}', '/tmp/metering_seed.py')" && ` +
+        `(python /tmp/metering_seed.py >/proc/1/fd/1 2>&1 &)) ; `;
+      // The filter publishes usage events and reads its own soft-warn snapshot.
+      taskRole.addToPolicy(new iam.PolicyStatement({
+        actions: ['events:PutEvents'],
+        resources: [`arn:aws:events:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:event-bus/${props.metering.busName}`],
+      }));
+      taskRole.addToPolicy(new iam.PolicyStatement({
+        actions: ['dynamodb:GetItem'],
+        resources: [`arn:aws:dynamodb:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:table/${props.metering.tableName}`],
+      }));
+    }
 
     taskDefinition.addContainer('OpenWebUI', {
       image: containerImage,
@@ -245,6 +283,16 @@ export class ComputeStack extends cdk.Stack {
         // OpenAI connections + the Claude pipe. Not consumed by upstream itself.
         GATEWAY_INFERENCE_URL: props.gatewayInferenceUrl,
         MANTLE_REGION: props.mantleRegion ?? cdk.Aws.REGION,
+        // Opt-in metering module (docs/METERING.md): read by metering_seed.py
+        // and the seeded filter. Spread ⇒ ZERO env delta when metering is off.
+        ...(props.metering
+          ? {
+              METERING_ENABLED: 'true',
+              METERING_BUS: props.metering.busName,
+              METERING_TABLE: props.metering.tableName,
+              METERING_REGION: cdk.Aws.REGION,
+            }
+          : {}),
         // Single-SSO deployment — skip Open WebUI's local login form and go
         // straight to the Cognito hosted UI. Auto-redirect only fires when the
         // local login form is disabled (auth/+page.svelte gates on

@@ -40,3 +40,25 @@ gateway/provisioner/python_dateutil*/
 gateway/provisioner/urllib3*/
 gateway/provisioner/six*
 gateway/provisioner/bin/
+
+# Vendored deps for the opt-in model-refresher Lambda (boto3>=1.43 + requests),
+# installed at deploy time. See gateway/refresher/requirements.txt.
+gateway/refresher/boto3*/
+gateway/refresher/botocore*/
+gateway/refresher/s3transfer*/
+gateway/refresher/jmespath*/
+gateway/refresher/dateutil*/
+gateway/refresher/python_dateutil*/
+gateway/refresher/urllib3*/
+gateway/refresher/requests*/
+gateway/refresher/charset_normalizer*/
+gateway/refresher/idna*/
+gateway/refresher/certifi*/
+gateway/refresher/urllib3*
+gateway/refresher/six*
+gateway/refresher/bin/
+gateway/refresher/__pycache__/
+infra/cdk.out.baseline/
+infra/cdk.out.g0off/
+infra/cdk.out.g0on/
+infra/cdk.out.*/

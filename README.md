@@ -153,6 +153,8 @@ infra/                     CDK app (TypeScript)
 gateway/
   interceptor/index.py     REQUEST interceptor: capability-filtered model listing
   provisioner/index.py     custom resource: creates the bedrock-mantle inference target
+  refresher/index.py       opt-in scheduled model refresher (enableModelRefresh)
+  refresher/probe_core.py  shared probe logic (used by the CLI + the refresher)
 pipe/
   gateway_anthropic_pipe.py  Claude manifold pipe (per-user OAuth to the gateway)
   seed.py                    installs the pipe + 2 OpenAI connections at boot
@@ -167,6 +169,12 @@ docs/                      deployment, gateway integration, upgrade, cost
 Infrastructure (VPC/ALB/ECS/Aurora/Redis/CloudFront/gateway/Lambdas) is a small
 fixed monthly cost; the dominant driver is Bedrock token consumption, which is
 pay-per-use. See [`docs/COST_ANALYSIS_20K_USERS.md`](docs/COST_ANALYSIS_20K_USERS.md).
+
+**Optional metering module** (`./deploy.sh --metering`, off by default): per-user
+token/dollar metering, per-team cost attribution via Bedrock Projects, and
+operator-set quotas enforced at the gateway (blocked users see the reason in
+the chat). When disabled, the base sample is byte-identical. See
+[`docs/METERING.md`](docs/METERING.md).
 
 ## Security
 

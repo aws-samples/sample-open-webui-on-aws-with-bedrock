@@ -46,6 +46,17 @@ OpenAI connections seeded into the app at container start (see
 - **App config:** `.env` in repo root — source of truth for all application settings
 - **CDK context:** CLI context overrides `deploy.config.json` values
 
+### Optional CDK context flags
+
+| Flag | Default | Effect |
+|---|---|---|
+| `enableModelRefresh` | `false` | Adds the scheduled model-capability refresher (Lambda + EventBridge schedule + SNS topic) to the Gateway stack. When `false`, none of these resources exist. See [the gateway guide](../docs/GATEWAY_INTEGRATION_GUIDE.md#operational-notes). |
+| `modelRefreshRateHours` | `24` | Refresher cadence, in hours (only when `enableModelRefresh=true`). |
+
+Pass with `-c`, e.g. `./deploy.sh` after `npx cdk deploy -c enableModelRefresh=true`,
+or add to `cdk.context.json`. `deploy.sh` vendors the refresher's Python deps
+(boto3 ≥ 1.43 + requests) only when the flag is on.
+
 ## Key Design Decisions
 
 - **Internal ALB + CloudFront VPC origin** — ALB has no public ingress. CloudFront manages connectivity via ENIs in the VPC.

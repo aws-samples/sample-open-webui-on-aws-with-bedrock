@@ -110,6 +110,24 @@ which probes every `bedrock-mantle` model against each API and excludes any that
 are account-gated. Run it, commit the updated JSON, and redeploy the gateway
 stack to refresh the interceptor.
 
+**Why the matrix comes from probing, not the model listing.** `bedrock-mantle`'s
+`/v1/models` carries no capability metadata — a model can be *listed* yet not
+*invocable* on any API Open WebUI drives. The probe classifies by actually
+invoking each model, and it encodes two facts that are easy to get wrong:
+
+- **A lane is served on more than one path.** The OpenAI-branded families
+  (e.g. `gpt-5.x`) answer on `/openai/v1/*`, while the open-weight models
+  (`gpt-oss`, etc.) answer on the generic `/v1/*`. The probe tries **both** and
+  marks a model supported if either returns `200`; probing only `/v1/responses`
+  would return a literally-true but misleading *"does not support the
+  '/v1/responses' API"* for every `gpt-5.x` model. (The gateway connector
+  path-rewrites to whichever path a model needs — see below.)
+- **The account gate is not uniform across paths.** A model your account can't
+  use returns `401 "…not enabled for this account"` — but sometimes only on one
+  path while another returns `200`. The probe treats a gate on *any* path as
+  "exclude from every lane," because the gateway enforces the gate even where
+  the public endpoint doesn't.
+
 ### 4. The Open WebUI wiring — `pipe/seed.py`
 
 At container start the seeder (running beside the unmodified image) waits for
@@ -174,10 +192,37 @@ the foundation that makes them per-user rather than per-app.
 
 ## Operational notes
 
-- **Adding models over time.** New `bedrock-mantle` models don't appear until
-  they're in `config/model-capabilities.json`. Re-run the probe script and
-  redeploy the gateway stack. (A scheduled EventBridge → probe → redeploy job is
-  a reasonable extension; not included to keep the sample lean.)
+- **Adding models over time — two things must happen, not one.** When
+  `bedrock-mantle` gains a model, making it usable in Open WebUI takes both a
+  **listing** refresh and a **routing** refresh:
+  1. **Listing** — the model won't appear in the dropdown until it's in the
+     interceptor's `MODEL_CAPS` (from `config/model-capabilities.json`). Re-run
+     the probe and redeploy the gateway stack (or use the refresher below).
+  2. **Routing — the connector caches its model map.** The `bedrock-mantle`
+     inference **connector snapshots its model/path map at target-creation time
+     and does not self-refresh.** A model added *after* your target was created
+     will *list* but return `400 "does not support…"` on selection, because the
+     connector still routes it to the wrong path. Force a **zero-downtime
+     re-snapshot** by re-`update`-ing the target with its identical config
+     (a no-op `UpdateGatewayTarget`) — after that, the new model routes. This is
+     the single most surprising gotcha in operating the gateway; budget for it.
+
+  **The opt-in refresher automates both.** Deploy with
+  `-c enableModelRefresh=true` (default **off**) and the gateway stack adds a
+  scheduled Lambda (`gateway/refresher/`) that, on a cadence
+  (`-c modelRefreshRateHours`, default 24):
+  - re-probes the live catalog (`probe_core`, shared with the CLI script),
+  - **collapse-guards** the result — if a populated lane shrinks below 50% (the
+    signature of a transient Mantle blip), it does **not** apply the change and
+    instead alerts, so a bad probe can never empty everyone's dropdown,
+  - writes the fresh `MODEL_CAPS` onto the interceptor Lambda (no gateway config
+    change needed to refresh the *listing*),
+  - **re-snapshots the connector** so newly-listed models actually *route*, and
+  - publishes a human-readable diff (`+model / -model` per lane) to an SNS topic
+    (`ModelRefreshTopicArn` output) — subscribe to see catalog shifts.
+
+  It's off by default to keep the base sample lean; when off, none of these
+  resources are created (the stack is byte-for-byte unchanged).
 - **Local-password users.** With `SIGV4_FALLBACK` off (default) they can't use
   the gateway lanes without an OAuth session. Use Cognito SSO for all users, or
   enable the fallback valve if you accept shared-identity model calls.

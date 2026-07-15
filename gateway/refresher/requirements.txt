@@ -1,0 +1,7 @@
+# Vendored into the refresher Lambda asset at deploy time (gitignored).
+#  - boto3 >= 1.43: the runtime's bundled boto3 predates the AgentCore
+#    "inference" gateway-target shape used by update_gateway_target (the
+#    connector re-snapshot).
+#  - requests: the capability probe issues signed HTTP calls to bedrock-mantle.
+boto3>=1.43.0
+requests>=2.31.0

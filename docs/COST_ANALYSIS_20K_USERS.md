@@ -9,11 +9,12 @@ This analysis projects infrastructure and LLM consumption costs for deploying Op
 > [Bedrock pricing page](https://aws.amazon.com/bedrock/pricing/) before
 > budgeting.
 >
-> **Scope note:** the quota/limit strategies discussed below are **cost-control
-> strategies, not features of this sample** — per-user/per-group token quota
-> enforcement is not included. Equivalent ceilings can be achieved with
-> Bedrock service quotas, CloudWatch usage alarms, application inference
-> profiles for cost allocation, or by extending the sample.
+> **Scope note:** per-user/per-group quota enforcement is available as the
+> sample's **opt-in metering module** (`./deploy.sh --metering` — see
+> [`docs/METERING.md`](METERING.md)): per-user dollar/token quotas enforced at
+> the gateway, per-team cost attribution via Bedrock Projects, and nightly
+> reconciliation against Cost Explorer. The strategies below remain valid as
+> coarser, AWS-native ceilings that work without the module.
 
 ---
 
@@ -293,11 +294,13 @@ Implement intelligent model routing based on task complexity:
 
 Open WebUI's native group-based model access control is well suited for this. In the admin UI, set expensive models (Sonnet, Opus) to Private and grant access only to faculty/power-users groups (e.g. `us.anthropic.claude-*` to faculty, `us.amazon.nova-*` to basic users). Because the gateway interceptor already surfaces only the models that work per connection, admins are choosing among a clean, functional model list.
 
-### Token Budgets as a Cost Ceiling (strategy — enforcement not included)
+### Token Budgets as a Cost Ceiling
 
-A hard per-user token budget bounds worst-case spend. **This sample does not
-enforce per-user token quotas**; the table below is a planning model for what
-tiered budgets would cap costs at, whichever enforcement mechanism you choose:
+A hard per-user budget bounds worst-case spend. **The opt-in metering module
+enforces these** (`./deploy.sh --metering` — dollar-denominated per-user
+quotas at the gateway, soft-warn toasts, per-team attribution; see
+[`docs/METERING.md`](METERING.md)). The table below is the planning model for
+tier sizing:
 
 | Budget Strategy | Daily (tokens) | Monthly (tokens) | Max Cost/User/Month (Haiku) |
 |---|---|---|---|
@@ -306,21 +309,16 @@ tiered budgets would cap costs at, whichever enforcement mechanism you choose:
 | Generous | 50,000 | 1,000,000 | $3.40 |
 | Faculty (unbounded) | — | — | Variable |
 
-Ways to realize these ceilings without application-level enforcement:
+Coarser ceilings that work without the module:
 
-- **Bedrock service quotas** — per-model requests/tokens-per-minute ceilings at
+- **Bedrock service quotas** — per-model tokens-per-minute ceilings at
   the account level (coarse, but a real hard stop). Because calls flow through
   the `bedrock-mantle` endpoint, plan against its quotas (see §2).
 - **CloudWatch alarms on Bedrock usage metrics** — alert (or trigger an
   automation) when daily/monthly token consumption crosses a threshold.
-- **Application inference profiles** — tag Bedrock usage per workload for cost
-  allocation and per-profile monitoring.
 - **Group-based model access** (Open WebUI native) — restrict expensive
   models to small groups in the admin UI; the cheapest effective control
   because the price gap between models is the largest lever.
-- **Extend the sample** — Open WebUI's middleware pipeline offers inlet/outlet
-  hooks where a quota service could be added; per-response usage is already
-  emitted in OpenAI-shape fields.
 
 With 14,000 active users at the "Standard" budget on Haiku: worst-case ceiling = 14,000 × $1.70 = **$23,800/month**. In practice, most users won't reach their budget, so actual cost is 30-50% of the ceiling.
 
@@ -395,7 +393,7 @@ Our solution is **20-40x cheaper** than per-seat SaaS alternatives because we pa
 
 4. **Group-based access control is a cost management tool**, not just a security feature. Restricting expensive models to faculty/grad students while giving undergrads access to Haiku/Nova is the most effective cost optimization.
 
-5. **Token budgets provide a hard cost ceiling** — when enforced. This sample doesn't enforce them; pick a mechanism from §5 so the bound is real rather than aspirational.
+5. **Token budgets provide a hard cost ceiling** — enforced by the opt-in metering module (docs/METERING.md), or by the coarser §4 controls without it.
 
 6. **Usage is seasonal.** Expect 2x spikes during peak periods (e.g., midterms and finals). Auto-scaling infrastructure handles this; bound the proportional LLM cost spike with the §5 controls.
 
