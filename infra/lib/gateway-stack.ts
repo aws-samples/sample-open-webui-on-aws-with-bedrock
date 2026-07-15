@@ -109,9 +109,12 @@ export class GatewayStack extends cdk.Stack {
         memorySize: 256,
         logRetention: logs.RetentionDays.ONE_MONTH,
       });
+      // bedrock-mantle is its own IAM service prefix and the projects API's
+      // action vocabulary is not yet documented — scoped Project* names were
+      // rejected (401 access_denied) in deploy-verify, so match the gateway
+      // execution role's precedent (bedrock-mantle:*).
       projectsFn.addToRolePolicy(new iam.PolicyStatement({
-        actions: ['bedrock-mantle:ListProjects', 'bedrock-mantle:GetProject',
-                  'bedrock-mantle:CreateProject', 'bedrock-mantle:UpdateProject'],
+        actions: ['bedrock-mantle:*'],
         resources: ['*'],
       }));
       const projectsProvider = new cr.Provider(this, 'ProjectsProvider', { onEventHandler: projectsFn });
