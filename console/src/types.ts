@@ -82,6 +82,8 @@ export interface LedgerCall {
   tokens_out?: number;
   tokens_cached?: number;
   usd?: number;
+  usd_estimate?: number;
+  unpriced?: boolean;
   state?: string;
   source?: string;
   billing_group?: string;

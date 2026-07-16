@@ -193,6 +193,13 @@ class Filter:
                     "user_id": user.get("id") or "unknown",
                     "groups": group_names,
                     "model": body.get("model") or msg.get("model") or "unknown",
+                    # Lane the request took at the gateway. Open WebUI's chat
+                    # turn is always the chat-completions lane; the debit Lambda
+                    # will override this with the authoritative lane from the
+                    # matched admission estimate when one is found (design §4.2).
+                    # Emitting it here keeps filter-only / no-estimate rows
+                    # (e.g. the capture canary) from showing "unknown".
+                    "lane": "chat/completions",
                     "chat_id": body.get("chat_id") or meta.get("chat_id") or "",
                     "message_id": msg.get("id") or "",
                     # provider response id when the app surfaced one (idempotency key #1)

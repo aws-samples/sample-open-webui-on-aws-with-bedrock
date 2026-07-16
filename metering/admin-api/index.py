@@ -131,6 +131,8 @@ def _plain(item: dict) -> dict:
             out[k] = float(v["N"])
         elif "SS" in v:
             out[k] = list(v["SS"])
+        elif "BOOL" in v:
+            out[k] = v["BOOL"]
     return out
 
 

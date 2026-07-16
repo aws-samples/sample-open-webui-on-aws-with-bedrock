@@ -115,7 +115,19 @@ claim** — no number is promised up front. Notes:
 - **Unpriced models** (today: Anthropic Claude and GPT-5.x have no mantle SKUs
   in the offer file): usage is recorded in tokens, priced at $0, and the
   `UnpricedModel` alarm fires. Add operator rates under `"overrides"` in
-  `config/model-prices.json` to bring them under dollar quotas.
+  `config/model-prices.json` to bring them under dollar quotas. Settled ledger
+  rows for unpriced models carry `unpriced: true` plus `usd_estimate` (the
+  interceptor's admission-estimate dollars) so the console shows
+  "~$X est." rather than a bare `$0` — a call that cost money reads as
+  cost-unknown, not free. The `usd_estimate` is display-only and is never
+  summed into the enforced counter (`used_usd`).
+- **Call `lane`** (chat/completions · responses · messages) on a *settled*
+  ledger row is filled from the matched admission estimate (the gateway
+  interceptor observed the actual lane); the seeded filter also emits its
+  best-effort lane so filter-only rows (e.g. the capture canary) aren't
+  `unknown`. Direct-to-gateway callers produce an estimate but no filter
+  event, so their spend appears as an OPEN reservation that the sweeper
+  resolves — it never becomes a settled ledger row.
 - Activate the projects' **cost-allocation tags** (Billing console → Cost
   allocation tags) after first deploy; tags take ≤24 h and are never
   retroactive.

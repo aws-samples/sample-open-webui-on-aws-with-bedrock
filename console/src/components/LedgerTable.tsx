@@ -1,6 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: MIT-0
-import { Badge, Box, Table } from '@cloudscape-design/components';
+import { Badge, Box, StatusIndicator, Table } from '@cloudscape-design/components';
 import { epochToLocal, tokens, usd } from '../format';
 import type { LedgerCall } from '../types';
 
@@ -27,8 +27,17 @@ export function LedgerTable(props: {
     {
       id: 'usd',
       header: 'Cost',
-      cell: (c: LedgerCall) => <Box textAlign="right">{usd(c.usd, 4)}</Box>,
-      width: 110,
+      cell: (c: LedgerCall) =>
+        c.unpriced ? (
+          <Box textAlign="right" color="text-status-inactive">
+            <StatusIndicator type="info" colorOverride="grey">
+              {c.usd_estimate ? `~${usd(c.usd_estimate, 4)} est.` : 'unpriced'}
+            </StatusIndicator>
+          </Box>
+        ) : (
+          <Box textAlign="right">{usd(c.usd, 4)}</Box>
+        ),
+      width: 140,
     },
     {
       id: 'state',

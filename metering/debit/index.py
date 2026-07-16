@@ -138,29 +138,6 @@ def _settle(detail: dict):
     key = _idempotency_key(detail)
     day = datetime.datetime.fromtimestamp(ts, datetime.timezone.utc).strftime("%Y-%m-%d")
     billing_group = _billing_group(detail.get("groups") or [])
-
-    ledger_item = {
-        "pk": {"S": f"LEDGER#{day}"},
-        "sk": {"S": f"{ts}#{key}"},
-        "idem": {"S": key},
-        "sub": {"S": sub},
-        "billing_group": {"S": billing_group},
-        "groups": {"SS": list(set((detail.get("groups") or ["unassigned"])))},
-        "model": {"S": model},
-        "lane": {"S": detail.get("lane", "unknown")},
-        "tier": {"S": tier},
-        "tokens_in": {"N": str(tin)},
-        "tokens_out": {"N": str(tout)},
-        "tokens_cached": {"N": str(tcached)},
-        "rate_in": {"N": str(rin or 0)},
-        "rate_out": {"N": str(rout or 0)},
-        "price_map_version": {"S": PRICE_MAP_VERSION},
-        "usd": {"N": str(usd)},
-        "state": {"S": "SETTLED"},
-        "source": {"S": detail.get("source", "FILTER")},
-        "ttl": {"N": str(ts + 15 * 30 * 24 * 3600)},  # ~15 months
-    }
-    # A GSI on idem lets the sweeper and admin API look up by key.
     counter_key = {"pk": {"S": f"USE#{sub}#{window}"}, "sk": {"S": "COUNTER"}}
 
     # Settle consumes the caller's OPEN admission estimate. The interceptor's
@@ -168,10 +145,15 @@ def _settle(detail: dict):
     # capture can never reconstruct, so matching is by CONTENT, not key: the
     # oldest OPEN estimate for the same (sub, model). The OPEN set is small by
     # construction (bounded by max-stream-duration × request rate), so a
-    # filtered GSI query is cheap.
+    # filtered GSI query is cheap. The matched estimate is ALSO the authoritative
+    # source for the gateway-observed lane and the fallback price of unpriced
+    # models — the app-tier filter can't see either, so we look it up first and
+    # let it fill those in below.
     est_usd = 0.0
     est_used = False
     est_pk = None
+    est_lane = None
+    est_group = None
     try:
         page = ddb.query(
             TableName=TABLE,
@@ -192,9 +174,47 @@ def _settle(detail: dict):
             est = items[0]
             est_pk = est["pk"]["S"]
             est_usd = float(est.get("usd", {}).get("N", "0"))
+            est_lane = est.get("lane", {}).get("S") or None
+            est_group = est.get("billing_group", {}).get("S") or None
             est_used = True
     except ClientError as e:
         log.warning(f"estimate lookup failed for {key}: {e}")
+
+    # Lane precedence: authoritative gateway estimate → filter-emitted → unknown.
+    lane = est_lane or detail.get("lane") or "unknown"
+    # billing_group: prefer the estimate's (interceptor resolved it from the JWT
+    # at request time), fall back to the group precedence over the event's groups.
+    if est_group:
+        billing_group = est_group
+
+    # An unpriced model settles at $0 (no mantle SKU — design M3), which reads as
+    # "free" in the console. Carry the interceptor's fallback estimate so the UI
+    # can show "unpriced (~$X est.)" instead of a bare $0, and flag it explicitly.
+    ledger_item = {
+        "pk": {"S": f"LEDGER#{day}"},
+        "sk": {"S": f"{ts}#{key}"},
+        "idem": {"S": key},
+        "sub": {"S": sub},
+        "billing_group": {"S": billing_group},
+        "groups": {"SS": list(set((detail.get("groups") or ["unassigned"])))},
+        "model": {"S": model},
+        "lane": {"S": lane},
+        "tier": {"S": tier},
+        "tokens_in": {"N": str(tin)},
+        "tokens_out": {"N": str(tout)},
+        "tokens_cached": {"N": str(tcached)},
+        "rate_in": {"N": str(rin or 0)},
+        "rate_out": {"N": str(rout or 0)},
+        "price_map_version": {"S": PRICE_MAP_VERSION},
+        "usd": {"N": str(usd)},
+        "unpriced": {"BOOL": bool(unpriced)},
+        "state": {"S": "SETTLED"},
+        "source": {"S": detail.get("source", "FILTER")},
+        "ttl": {"N": str(ts + 15 * 30 * 24 * 3600)},  # ~15 months
+    }
+    if unpriced and est_used and est_usd > 0:
+        # non-authoritative gateway estimate, for display only (never summed into used_usd)
+        ledger_item["usd_estimate"] = {"N": str(round(est_usd, 8))}
 
     # Counter model: total-in-force = used_usd + est_usd. Settlement moves the
     # matched estimate out of est_usd and the actual into used_usd. The w stamp
