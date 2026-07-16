@@ -376,6 +376,16 @@ if [[ "$SKIP_CDK_BOOTSTRAP" != "true" ]]; then
   log "CDK bootstrap complete"
 fi
 
+# ── Build the metering admin console SPA (metering only) ────
+# The MeteringStack ships console/dist to S3 as a deploy asset; synth fails
+# with a clear message if the build is missing (docs/METERING.md).
+if [[ "${METERING:-off}" == "on" && "$SKIP_CDK_DEPLOY" != "true" ]]; then
+  header "Building metering admin console"
+  (cd "$SCRIPT_DIR/console" && npm ci --silent && npm run build --silent) \
+    && log "console built (console/dist)" \
+    || { err "Metering console build failed (need node+npm; see console/README.md)."; exit 1; }
+fi
+
 # ── Vendor boto3 for the gateway provisioner Lambda ─────────
 # The Lambda python3.12 runtime bundles boto3 < 1.43, which does not know the
 # AgentCore "inference" gateway-target parameter. Vendor a current boto3 into

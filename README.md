@@ -171,10 +171,12 @@ fixed monthly cost; the dominant driver is Bedrock token consumption, which is
 pay-per-use. See [`docs/COST_ANALYSIS_20K_USERS.md`](docs/COST_ANALYSIS_20K_USERS.md).
 
 **Optional metering module** (`./deploy.sh --metering`, off by default): per-user
-token/dollar metering, per-team cost attribution via Bedrock Projects, and
+token/dollar metering, per-team cost attribution via Bedrock Projects,
 operator-set quotas enforced at the gateway (blocked users see the reason in
-the chat). When disabled, the base sample is byte-identical. See
-[`docs/METERING.md`](docs/METERING.md).
+the chat), and a standalone **admin web console** (stack output `ConsoleUrl`)
+for monitoring consumption and managing quotas — signed in with the same
+Cognito pool and admin groups as Open WebUI itself. When disabled, the base
+sample is byte-identical. See [`docs/METERING.md`](docs/METERING.md).
 
 ## Security
 

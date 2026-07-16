@@ -22,6 +22,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { Construct } from 'constructs';
+import { MeteringConsole } from './metering-console';
 
 export interface MeteringStackProps extends cdk.StackProps {
   userPool: cognito.UserPool;
@@ -36,6 +37,8 @@ export interface MeteringStackProps extends cdk.StackProps {
   gatewayId: string;
   /** Gateway inference base URL (…/inference), for the canaries. */
   gatewayInferenceUrl: string;
+  /** Managed Login domain host (…amazoncognito.com), for the console's OIDC flow. */
+  userPoolDomainName: string;
   /** Resource-name prefix (e.g. "dev", "prod"). Empty for the default single-env deploy. */
   environmentPrefix?: string;
 }
@@ -91,12 +94,35 @@ export class MeteringStack extends cdk.Stack {
       pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
     });
     // Sweeper lookup: OPEN estimates older than the max stream duration.
+    // (Also serves the console's policy list via state=POLICY rows — D4.)
     this.table.addGlobalSecondaryIndex({
       indexName: 'estimates',
       partitionKey: { name: 'state', type: dynamodb.AttributeType.STRING },
       sortKey: { name: 'created_at', type: dynamodb.AttributeType.NUMBER },
       projectionType: dynamodb.ProjectionType.ALL,
     });
+    // Console read paths (docs/plans/metering-admin-console/01-DECISIONS.md D4):
+    // by-window = spend-ordered USER/GROUP counters for one window (top
+    // spenders, near-limit) — writers stamp `w` at settle/sweep/rollup/reset.
+    this.table.addGlobalSecondaryIndex({
+      indexName: 'by-window',
+      partitionKey: { name: 'w', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'used_usd', type: dynamodb.AttributeType.NUMBER },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+    // by-sub = one user's ledger history, newest first (ledger sk = <epoch>#<key>).
+    // NOTE (upgrades): DynamoDB permits ONE GSI add per stack update. Fresh
+    // deploys create both console GSIs at once; upgrading a pre-console
+    // metering deployment needs two passes — deploy once with
+    // -c meteringGsiPhase=1 (adds by-window), then once without (adds by-sub).
+    if (this.node.tryGetContext('meteringGsiPhase') !== '1') {
+      this.table.addGlobalSecondaryIndex({
+        indexName: 'by-sub',
+        partitionKey: { name: 'sub', type: dynamodb.AttributeType.STRING },
+        sortKey: { name: 'sk', type: dynamodb.AttributeType.STRING },
+        projectionType: dynamodb.ProjectionType.ALL,
+      });
+    }
 
     // ── Metering bus + alerts topic ────────────────────────────────────────
     this.bus = new events.EventBus(this, 'MeteringBus', {
@@ -322,34 +348,97 @@ export class MeteringStack extends cdk.Stack {
     driftAlarm.addAlarmAction(new cwactions.SnsAction(this.alertsTopic));
 
     // ── Admin API: the operator control surface, outside Open WebUI ────────
+    // Serves the CLI (scripts/set-quota.sh) AND the admin console (console/).
+    const enforceMode = this.node.tryGetContext('meteringMode') === 'observe' ? 'OBSERVE' : 'ENFORCE';
     const adminFn = new lambda.Function(this, 'AdminFn', {
       functionName: `${envPrefix}open-webui-metering-admin`,
       runtime: lambda.Runtime.PYTHON_3_12,
       handler: 'index.handler',
       code: lambda.Code.fromAsset(path.join(__dirname, '..', '..', 'metering', 'admin-api')),
       timeout: cdk.Duration.seconds(15),
-      memorySize: 256,
-      environment: { TABLE: this.table.tableName },
+      memorySize: 512,
+      environment: {
+        TABLE: this.table.tableName,
+        USER_POOL_ID: props.userPool.userPoolId,
+        ALERTS_TOPIC_ARN: this.alertsTopic.topicArn,
+        ALARM_PREFIX: `${envPrefix}open-webui-metering`,
+        ENFORCE_MODE: enforceMode,
+        PRICE_MAP_VERSION: String(priceMap.version),
+        HARD_DEFAULT_USD: '5',
+        SOFT_DEFAULT_USD: '4',
+      },
       logRetention: logs.RetentionDays.ONE_MONTH,
     });
     this.table.grantReadWriteData(adminFn);
+    // Console read surfaces beyond the table — all read-only, resource-scoped
+    // where the service supports it (GetMetricData has no resource ARNs).
+    adminFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['cognito-idp:AdminGetUser', 'cognito-idp:AdminListGroupsForUser', 'cognito-idp:ListUsers'],
+      resources: [props.userPool.userPoolArn],
+    }));
+    adminFn.addToRolePolicy(new iam.PolicyStatement({
+      // Both are read-only. GetMetricData has no resource-level scoping at
+      // all; DescribeAlarms-by-prefix authorizes against alarm:* (the exact
+      // names aren't known at authorization time), so alarm:* is the
+      // tightest expressible resource — the Lambda still only asks for the
+      // module's prefix.
+      actions: ['cloudwatch:GetMetricData'],
+      resources: ['*'],
+    }));
+    adminFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['cloudwatch:DescribeAlarms'],
+      resources: [`arn:aws:cloudwatch:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:alarm:*`],
+    }));
+    adminFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['sns:ListSubscriptionsByTopic', 'sns:Subscribe', 'sns:Unsubscribe'],
+      resources: [this.alertsTopic.topicArn],
+    }));
 
     const httpApi = new apigwv2.HttpApi(this, 'AdminApi', {
       apiName: `${envPrefix}open-webui-metering-admin`,
       description: 'Metering operator API (quotas, usage, overrides) — Cognito-JWT-gated',
     });
+
+    // ── Admin console: static SPA + PKCE client + same-origin /api/* (D1/D2) ─
+    const console_ = new MeteringConsole(this, 'Console', {
+      userPool: props.userPool,
+      userPoolDomainName: props.userPoolDomainName,
+      httpApi,
+    });
+
     const authorizer = new apigwv2Authorizers.HttpJwtAuthorizer(
       'CognitoJwt',
       `https://cognito-idp.${cdk.Aws.REGION}.amazonaws.com/${props.userPool.userPoolId}`,
-      // Both app clients: the OWUI client (real admins hold its tokens) and
-      // the canary/CLI client (headless operators + verification tooling).
-      { jwtAudience: [props.userPoolClient.userPoolClientId, props.canaryClient.userPoolClientId] },
+      // Three app clients: OWUI (real admins hold its tokens), canary/CLI
+      // (headless operators + verification tooling), and the console's PKCE
+      // client. Group membership — not client choice — gates admin routes.
+      {
+        jwtAudience: [
+          props.userPoolClient.userPoolClientId,
+          props.canaryClient.userPoolClientId,
+          console_.client.userPoolClientId,
+        ],
+      },
     );
     const integration = new apigwv2Integrations.HttpLambdaIntegration('AdminIntegration', adminFn);
     for (const [routePath, methods] of [
-      ['/policy/{scope}', [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.PUT]],
+      ['/policy/{scope}', [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.PUT, apigwv2.HttpMethod.DELETE]],
+      ['/policies', [apigwv2.HttpMethod.GET]],
       ['/usage/{sub}', [apigwv2.HttpMethod.GET]],
       ['/usage/me', [apigwv2.HttpMethod.GET]],
+      ['/user/me/ledger', [apigwv2.HttpMethod.GET]],
+      ['/users', [apigwv2.HttpMethod.GET]],
+      ['/users/search', [apigwv2.HttpMethod.GET]],
+      ['/user/{sub}', [apigwv2.HttpMethod.GET]],
+      ['/user/{sub}/ledger', [apigwv2.HttpMethod.GET]],
+      ['/groups', [apigwv2.HttpMethod.GET]],
+      ['/audit', [apigwv2.HttpMethod.GET]],
+      ['/activity', [apigwv2.HttpMethod.GET]],
+      ['/estimates', [apigwv2.HttpMethod.GET]],
+      ['/metrics', [apigwv2.HttpMethod.GET]],
+      ['/alarms', [apigwv2.HttpMethod.GET]],
+      ['/alert-subscriptions', [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.POST, apigwv2.HttpMethod.DELETE]],
+      ['/config', [apigwv2.HttpMethod.GET]],
       ['/override', [apigwv2.HttpMethod.POST]],
       ['/counter-reset', [apigwv2.HttpMethod.POST]],
     ] as const) {

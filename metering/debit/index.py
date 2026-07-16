@@ -197,14 +197,16 @@ def _settle(detail: dict):
         log.warning(f"estimate lookup failed for {key}: {e}")
 
     # Counter model: total-in-force = used_usd + est_usd. Settlement moves the
-    # matched estimate out of est_usd and the actual into used_usd.
-    update_expr = "ADD used_usd :d, used_in :i, used_out :o, req_count :one SET updated_at = :now"
+    # matched estimate out of est_usd and the actual into used_usd. The w stamp
+    # projects the counter into the by-window GSI (admin console reads, D4).
+    update_expr = "ADD used_usd :d, used_in :i, used_out :o, req_count :one SET updated_at = :now, w = :w"
     values = {
         ":d": {"N": str(round(usd, 8))},
         ":i": {"N": str(tin)},
         ":o": {"N": str(tout)},
         ":one": {"N": "1"},
         ":now": {"N": str(ts)},
+        ":w": {"S": window},
     }
     if est_used:
         update_expr += ", est_usd = if_not_exists(est_usd, :zero) - :e"
@@ -268,13 +270,14 @@ def _settle(detail: dict):
                 "Update": {
                     "TableName": TABLE,
                     "Key": counter_key,
-                    "UpdateExpression": "ADD used_usd :d, used_in :i, used_out :o, req_count :one SET updated_at = :now",
+                    "UpdateExpression": "ADD used_usd :d, used_in :i, used_out :o, req_count :one SET updated_at = :now, w = :w",
                     "ExpressionAttributeValues": {
                         ":d": {"N": str(round(usd, 8))},
                         ":i": {"N": str(tin)},
                         ":o": {"N": str(tout)},
                         ":one": {"N": "1"},
                         ":now": {"N": str(ts)},
+                        ":w": {"S": window},
                     },
                 }
             },

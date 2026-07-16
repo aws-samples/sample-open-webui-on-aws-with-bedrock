@@ -62,13 +62,15 @@ def handler(event, context):
         ddb.update_item(
             TableName=TABLE,
             Key={"pk": {"S": f"GROUP#{group}#{window}"}, "sk": {"S": "COUNTER"}},
-            UpdateExpression="ADD used_usd :u, used_in :i, used_out :o, req_count :n SET updated_at = :now",
+            # w stamp projects group counters into the by-window GSI (console D4)
+            UpdateExpression="ADD used_usd :u, used_in :i, used_out :o, req_count :n SET updated_at = :now, w = :w",
             ExpressionAttributeValues={
                 ":u": {"N": str(round(agg["usd"], 8))},
                 ":i": {"N": str(agg["tin"])},
                 ":o": {"N": str(agg["tout"])},
                 ":n": {"N": str(agg["n"])},
                 ":now": {"N": str(int(time.time()))},
+                ":w": {"S": window},
             },
         )
     if adds:

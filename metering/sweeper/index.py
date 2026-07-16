@@ -73,12 +73,14 @@ def _resolve(est: dict, now: int):
                 "Update": {
                     "TableName": TABLE,
                     "Key": counter_key,
-                    # move the estimate into used_usd (net total unchanged)
-                    "UpdateExpression": "ADD used_usd :u, est_usd :neg SET updated_at = :now",
+                    # move the estimate into used_usd (net total unchanged);
+                    # w stamp keeps the counter in the by-window GSI (console D4)
+                    "UpdateExpression": "ADD used_usd :u, est_usd :neg SET updated_at = :now, w = :w",
                     "ExpressionAttributeValues": {
                         ":u": {"N": str(usd)},
                         ":neg": {"N": str(-usd)},
                         ":now": {"N": str(now)},
+                        ":w": {"S": window},
                     },
                 }
             },
@@ -121,8 +123,8 @@ def _resolve(est: dict, now: int):
                 "Update": {
                     "TableName": TABLE,
                     "Key": counter_key,
-                    "UpdateExpression": "ADD est_usd :neg SET updated_at = :now",
-                    "ExpressionAttributeValues": {":neg": {"N": str(-usd)}, ":now": {"N": str(now)}},
+                    "UpdateExpression": "ADD est_usd :neg SET updated_at = :now, w = :w",
+                    "ExpressionAttributeValues": {":neg": {"N": str(-usd)}, ":now": {"N": str(now)}, ":w": {"S": window}},
                 }
             },
         ]

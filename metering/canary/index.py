@@ -101,6 +101,9 @@ def _ensure_policy(sub: str, hard_usd: str):
             "soft_limit_usd": {"N": hard_usd},
             "rpm_limit": {"N": "60"},
             "note": {"S": f"metering {MODE} canary policy (managed by the canary Lambda)"},
+            # estimates-GSI stamp: the console's policy list queries state=POLICY
+            "state": {"S": "POLICY"},
+            "created_at": {"N": str(int(time.time()))},
         },
         ConditionExpression="attribute_not_exists(pk)",
     )

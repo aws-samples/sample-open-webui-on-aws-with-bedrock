@@ -81,5 +81,21 @@ upstream's own manifests.
 | typescript | Apache-2.0 | npmjs.org |
 | @types/node | MIT | npmjs.org |
 
+## Metering admin console dependencies (console/ — only built when `--metering`)
+
+The opt-in metering module's admin console is a static React SPA
+(docs/plans/metering-admin-console/). Its dependencies are built into static
+assets at deploy time and served from S3/CloudFront; none run server-side.
+
+| Package | License | Source |
+|---|---|---|
+| react, react-dom | MIT | npmjs.org |
+| @cloudscape-design/components | Apache-2.0 | npmjs.org |
+| @cloudscape-design/global-styles | Apache-2.0 | npmjs.org |
+| react-router-dom | MIT | npmjs.org |
+| oidc-client-ts | MIT | npmjs.org |
+| react-oidc-context | MIT | npmjs.org |
+| vite, @vitejs/plugin-react | MIT | npmjs.org |
+
 The sample adds no Python dependencies: the Bedrock provider uses the boto3
 version already shipped in the official Open WebUI image.

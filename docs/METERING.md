@@ -52,20 +52,55 @@ soft-warn **$4** (toast in the UI), **30 requests/min**, max-tokens clamp **8192
 
 ## Operator surface (outside Open WebUI)
 
+- **Admin console** (stack output `ConsoleUrl`) — the primary operator
+  surface: a standalone web app (CloudFront + private S3 + the admin API
+  same-origin under `/api`) where an admin can monitor live/aggregate
+  consumption, drill into any user or team, set and edit quota policies,
+  grant time-boxed overrides, reset counters, read the audit trail, watch
+  module health (canaries, degraded checks, alarms), and manage alert
+  subscriptions. Sign-in is the sample's **existing Cognito pool** via a
+  dedicated no-secret PKCE app client (output `ConsoleClientId`) — an OWUI
+  admin (member of `admin`/`admins`/`webui-admins`) is a console admin
+  automatically; every other pool user gets a self-service "My usage" view
+  only. Architecture + decision record:
+  [`docs/plans/metering-admin-console/01-DECISIONS.md`](plans/metering-admin-console/01-DECISIONS.md).
+  Evaluating without traffic: `scripts/seed-demo-metering-data.py` seeds
+  labeled demo rows (`--cleanup` removes exactly them).
 - **Admin API** (stack output `AdminApiUrl`; Cognito JWT; mutating routes
   require membership in an admin group — `admins`, `webui-admins`, or `admin`):
-  - `GET/PUT /policy/{scope}` — scope `DEFAULT`, `GROUP#<name>`, `USER#<sub>`;
-    body `{"hard_limit_usd": 10, "soft_limit_usd": 8, "rpm_limit": 30}`
-  - `GET /usage/{sub}?window=YYYY-MM`, `GET /usage/me`
-  - `POST /override` `{"sub": "...", "hard_limit_usd": 20}` ·
+  - `GET/PUT/DELETE /policy/{scope}` — scope `DEFAULT`, `GROUP#<name>`,
+    `USER#<sub>`; body `{"hard_limit_usd": 10, "soft_limit_usd": 8,
+    "rpm_limit": 30, "until": <epoch>, "note": "..."}`
+  - `GET /usage/{sub}?window=YYYY-MM`, `GET /usage/me`, `GET /user/me/ledger`
+  - `POST /override` `{"sub": "...", "hard_limit_usd": 20, "until": ...}` ·
     `POST /counter-reset` `{"sub": "..."}`
-  - Every mutation writes an audit row; **self-targeted resets/overrides are
-    rejected** — a second admin must act.
-- **`scripts/set-quota.sh`** — thin CLI over the same API.
+  - Console read routes: `/users`, `/users/search`, `/user/{sub}`,
+    `/user/{sub}/ledger`, `/groups`, `/policies`, `/audit`, `/activity`,
+    `/estimates`, `/metrics`, `/alarms`, `/alert-subscriptions`, `/config`
+    — all admin-gated (except `/config` + the self-service pair), all
+    GSI-backed (no table scans).
+  - Every mutation writes an audit row; **self-targeted policy changes,
+    overrides, and resets are rejected** — a second admin must act.
+  - A time-boxed override's `until` is an **operator-facing expiry marker**,
+    not an auto-expiry: the enforcement interceptor applies a `USER#` policy
+    row whenever it exists, so ending an override means **deleting the row**
+    (the console's Quota policies page flags past-date rows red for cleanup).
+    Making the interceptor drop expired rows on read is a small,
+    deliberately-deferred enforcement-plane change (see the console decision
+    record's residual-risks section).
+- **`scripts/set-quota.sh`** — thin CLI over the same API (`$default` stage).
 - **CloudWatch dashboard** `open-webui-metering` — spend rate, denies,
   degraded checks, sweeper refunds, canary status, reconciliation drift.
 - **SNS topic** (output `MeteringAlertsTopicArn`) — subscribe for: user at
-  80%/100% of quota, DLQ depth, unpriced-model, canary failures, drift >5%.
+  80%/100% of quota, DLQ depth, unpriced-model, canary failures, drift >5%
+  (or manage subscriptions from the console's Module health page).
+
+**Upgrading a pre-console metering deployment:** DynamoDB allows one GSI
+creation per stack update and the console adds two. Deploy once with
+`-c meteringGsiPhase=1`, then again without it. Fresh deploys need one pass.
+Counters written before the upgrade enter the console's by-window listing on
+their first settle/sweep/reset (≤15 min of traffic); ledger history backfills
+automatically.
 
 ## Accuracy & reconciliation (what to tell finance)
 
