@@ -153,12 +153,23 @@ def _window_now() -> str:
     return time.strftime("%Y-%m", time.gmtime())
 
 
-_WINDOW_RE = re.compile(r"^\d{4}-\d{2}$")
+# \Z (not $) so a trailing newline can't slip a bogus window into a DDB key.
+_WINDOW_RE = re.compile(r"^\d{4}-\d{2}\Z")
 
 
 def _safe_window(qs: dict) -> str:
     w = qs.get("window") or _window_now()
     return w if _WINDOW_RE.match(w) else _window_now()
+
+
+def _int_param(qs: dict, key: str, default: int, lo: int, hi: int) -> int:
+    """Bounded int query-param. A non-numeric value falls back to the default
+    instead of raising (an uncaught int() would 500 the request)."""
+    try:
+        v = int(qs.get(key, default))
+    except (TypeError, ValueError):
+        v = default
+    return max(lo, min(v, hi))
 
 
 def _cached(key: str, fn):
@@ -172,15 +183,19 @@ def _cached(key: str, fn):
 
 # ── policies ────────────────────────────────────────────────────────────────
 
-def _get_policy(scope: str) -> dict:
+def _get_policy(scope: str, consistent: bool = False) -> dict:
     item = ddb.get_item(
-        TableName=TABLE, Key={"pk": {"S": f"POLICY#{scope}"}, "sk": {"S": "POLICY"}}
+        TableName=TABLE,
+        Key={"pk": {"S": f"POLICY#{scope}"}, "sk": {"S": "POLICY"}},
+        ConsistentRead=consistent,
     ).get("Item")
     return _plain(item)
 
 
 def _put_policy(scope: str, body: dict, actor: str) -> dict:
-    before = _get_policy(scope)
+    # Audit before/after must be strongly consistent — an eventually-consistent
+    # read right after put_item can record stale values (review finding).
+    before = _get_policy(scope, consistent=True)
     now = int(time.time())
     item = {
         "pk": {"S": f"POLICY#{scope}"},
@@ -203,13 +218,13 @@ def _put_policy(scope: str, body: dict, actor: str) -> dict:
             raise ValueError("until must be a future epoch timestamp")
         item["override_until"] = {"N": str(until)}
     ddb.put_item(TableName=TABLE, Item=item)
-    after = _get_policy(scope)
+    after = _get_policy(scope, consistent=True)
     _audit(actor, "PUT_POLICY", scope, before, after)
     return after
 
 
 def _delete_policy(scope: str, actor: str) -> dict:
-    before = _get_policy(scope)
+    before = _get_policy(scope, consistent=True)
     if not before:
         return {"deleted": False, "reason": "no explicit policy at this scope"}
     ddb.delete_item(TableName=TABLE, Key={"pk": {"S": f"POLICY#{scope}"}, "sk": {"S": "POLICY"}})
@@ -724,7 +739,7 @@ def handler(event, context):
         return _resp(200, out)
 
     if route == "GET /user/me/ledger":
-        return _resp(200, _user_ledger(actor, min(int(qs.get("limit", "25")), 100), qs.get("cursor")))
+        return _resp(200, _user_ledger(actor, _int_param(qs, "limit", 25, 1, 100), qs.get("cursor")))
 
     if route == "GET /config":
         is_admin = _is_admin(claims)
@@ -755,7 +770,7 @@ def handler(event, context):
         return _resp(200, _usage(path_params.get("sub", ""), window))
 
     if route == "GET /users":
-        limit = min(int(qs.get("limit", "50")), 100)
+        limit = _int_param(qs, "limit", 50, 1, 100)
         cursor, flt = qs.get("cursor"), qs.get("filter")
         if cursor or flt:
             return _resp(200, _list_users(window, limit, cursor, flt))
@@ -772,19 +787,19 @@ def handler(event, context):
 
     if route == "GET /user/{sub}/ledger":
         return _resp(200, _user_ledger(
-            path_params.get("sub", ""), min(int(qs.get("limit", "25")), 100), qs.get("cursor")))
+            path_params.get("sub", ""), _int_param(qs, "limit", 25, 1, 100), qs.get("cursor")))
 
     if route == "GET /groups":
         return _resp(200, _cached(f"groups#{window}", lambda: _list_groups(window)))
 
     if route == "GET /audit":
-        return _resp(200, _audit_trail(int(qs.get("days", "7")), qs.get("actor")))
+        return _resp(200, _audit_trail(_int_param(qs, "days", 7, 1, 31), qs.get("actor")))
 
     if route == "GET /activity":
-        return _resp(200, _activity(min(int(qs.get("limit", "50")), 100)))
+        return _resp(200, _activity(_int_param(qs, "limit", 50, 1, 100)))
 
     if route == "GET /estimates":
-        return _resp(200, {"estimates": _open_estimates(limit=min(int(qs.get("limit", "100")), 200))})
+        return _resp(200, {"estimates": _open_estimates(limit=_int_param(qs, "limit", 100, 1, 200))})
 
     if route == "GET /metrics":
         return _resp(200, _cached(f"metrics#{qs.get('range', '24h')}", lambda: _metrics(qs.get("range", "24h"))))
@@ -836,7 +851,9 @@ def handler(event, context):
         if not _WINDOW_RE.match(w):
             return _resp(400, {"error": "window must be YYYY-MM"})
         key = {"pk": {"S": f"USE#{sub}#{w}"}, "sk": {"S": "COUNTER"}}
-        before = _plain(ddb.get_item(TableName=TABLE, Key=key).get("Item"))
+        # Strongly consistent so the audit row's "before" reflects the true
+        # pre-reset counter, not a stale replica (review finding).
+        before = _plain(ddb.get_item(TableName=TABLE, Key=key, ConsistentRead=True).get("Item"))
         ddb.update_item(
             TableName=TABLE,
             Key=key,

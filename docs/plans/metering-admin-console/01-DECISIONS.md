@@ -220,6 +220,17 @@ mobile layouts (Cloudscape degrades acceptably; operators use desktops).
   module. Recommended as a fast-follow if operators want hands-off expiry. The
   console and docs state the manual-cleanup semantics plainly so nobody
   mistakes the marker for auto-expiry.
+- **Self-target rejection guards the per-user scope, not org-wide scopes.** An
+  admin cannot edit/override/reset their *own* `USER#<self>` policy or counter
+  (a second admin must act). They *can* edit `DEFAULT` or a `GROUP#` they
+  belong to, which also raises their own effective limit — this is not a
+  bypass: default/team policy is a legitimate, audited, org-wide admin action
+  (any admin can already set any user's limit), and every such change writes
+  an actor-stamped audit row. The four-eyes control is specifically about an
+  admin quietly lifting *their own individual* ceiling; org-wide changes are
+  visible by construction (they affect everyone or the whole team, and are audited).
+  Deployments wanting four-eyes on default/group policy too can extend the
+  same rejection to those scopes.
 
 ## Security posture summary
 

@@ -65,6 +65,19 @@ def test_window_validation():
     assert admin._safe_window({"window": "../../etc"}) == admin._window_now()
     assert admin._safe_window({"window": "2026-7"}) == admin._window_now()
     assert admin._safe_window({}) == admin._window_now()
+    # trailing newline must NOT slip through ($ would allow it; \Z does not)
+    assert admin._safe_window({"window": "2026-07\n"}) == admin._window_now()
+    assert admin._safe_window({"window": "2026-07\nZZZ"}) == admin._window_now()
+
+
+def test_int_param_bounds_and_fallback():
+    assert admin._int_param({"limit": "50"}, "limit", 25, 1, 100) == 50
+    assert admin._int_param({"limit": "9999"}, "limit", 25, 1, 100) == 100  # clamped to hi
+    assert admin._int_param({"limit": "-5"}, "limit", 25, 1, 100) == 1      # clamped to lo
+    assert admin._int_param({}, "limit", 25, 1, 100) == 25                  # default
+    # non-numeric must fall back to the default, never raise (would 500)
+    assert admin._int_param({"limit": "abc"}, "limit", 25, 1, 100) == 25
+    assert admin._int_param({"limit": ""}, "limit", 25, 1, 100) == 25
 
 
 def test_cursor_roundtrip():
