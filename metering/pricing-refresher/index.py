@@ -49,6 +49,19 @@ REGION = os.environ.get("REGION", "us-east-1")
 SERVICES = ["AmazonBedrock", "AmazonBedrockService"]
 OFFER_URL = "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/{svc}/current/{region}/index.json"
 
+
+def _load_seed_overrides() -> dict:
+    """Curated default overrides for frontier model ids AWS hasn't published a
+    SKU for yet (config/model-price-overrides.json, bundled into this asset).
+    Seeded as PRICING#<model>/DEFAULT so a real AWS-published rate or an operator
+    override both outrank them — auto-healing (03-PRICING-RECONCILIATION.md)."""
+    try:
+        here = os.path.dirname(os.path.abspath(__file__))
+        with open(os.path.join(here, "model-price-overrides.json")) as f:
+            return json.load(f).get("overrides", {})
+    except (OSError, ValueError):
+        return {}
+
 _DIR = r"(?P<direction>input|output|cache-read|cache-write)"
 SHAPES = [
     re.compile(rf"^[A-Z0-9]+-(?P<model>.+)-mantle-{_DIR}-tokens-(?P<tier>standard|batch|flex|priority)$"),
@@ -143,6 +156,37 @@ def _write_published(models: dict, version: str) -> int:
     return written
 
 
+def _seed_defaults(published_models: set) -> int:
+    """Write PRICING#<model>/DEFAULT rows for curated frontier models AWS hasn't
+    published a SKU for. Skip any model AWS DID publish (aws-published wins and
+    the seed would be dead weight). Operator OVERRIDE rows are a different sk and
+    always win, so seeding never clobbers an operator's rate."""
+    seeds = _load_seed_overrides()
+    now = int(time.time())
+    written = 0
+    for model_key, spec in seeds.items():
+        if model_key in published_models:
+            continue  # AWS now prices it — don't seed a stale estimate
+        item = {
+            "pk": {"S": f"PRICING#{model_key}"},
+            "sk": {"S": "DEFAULT"},
+            "model": {"S": model_key},
+            "source": {"S": "default-override"},
+            "updated_at": {"N": str(now)},
+        }
+        if spec.get("input") is not None:
+            item["input"] = {"N": str(float(spec["input"]))}
+        if spec.get("output") is not None:
+            item["output"] = {"N": str(float(spec["output"]))}
+        if spec.get("note"):
+            item["note"] = {"S": str(spec["note"])[:500]}
+        if spec.get("source_ref"):
+            item["source_ref"] = {"S": str(spec["source_ref"])[:256]}
+        ddb.put_item(TableName=TABLE, Item=item)
+        written += 1
+    return written
+
+
 def handler(event, context):
     started = time.time()
     try:
@@ -152,6 +196,7 @@ def handler(event, context):
             log.error("no models parsed from any offer file")
             return {"ok": False, "models": 0}
         written = _write_published(models, version)
+        seeded = _seed_defaults(set(models.keys()))
         # marker row so the admin API / console can show last-refresh time + version
         ddb.put_item(
             TableName=TABLE,
@@ -160,14 +205,15 @@ def handler(event, context):
                 "sk": {"S": "META"},
                 "version": {"S": str(version)},
                 "model_count": {"N": str(written)},
+                "seeded_defaults": {"N": str(seeded)},
                 "region": {"S": REGION},
                 "refreshed_at": {"N": str(int(started))},
                 "duration_ms": {"N": str(int((time.time() - started) * 1000))},
             },
         )
         _metric("PricingRefreshModels", written)
-        log.info(json.dumps({"ok": True, "models": written, "version": version}))
-        return {"ok": True, "models": written, "version": version}
+        log.info(json.dumps({"ok": True, "models": written, "seeded": seeded, "version": version}))
+        return {"ok": True, "models": written, "seeded": seeded, "version": version}
     except Exception as e:  # noqa: BLE001
         _metric("PricingRefreshFailure")
         log.exception("pricing refresh failed")

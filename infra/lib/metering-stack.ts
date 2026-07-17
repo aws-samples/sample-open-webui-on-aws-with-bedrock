@@ -352,11 +352,22 @@ export class MeteringStack extends cdk.Stack {
     //    Writes PRICING#<model>/PUBLISHED rows; operator overrides (PRICING#/OVERRIDE)
     //    are written by the admin API and win at settle time. Egress to the public
     //    pricing.us-east-1.amazonaws.com offer files — no VPC, no auth needed.
+    // Bundle the curated frontier-model seed overrides into the refresher asset
+    // (config/model-price-overrides.json) — same pattern as the debit price map.
+    const refresherStagingDir = fs.mkdtempSync(path.join(os.tmpdir(), 'metering-pricing-refresher-'));
+    fs.copyFileSync(
+      path.join(__dirname, '..', '..', 'metering', 'pricing-refresher', 'index.py'),
+      path.join(refresherStagingDir, 'index.py'),
+    );
+    fs.copyFileSync(
+      path.join(__dirname, '..', '..', 'config', 'model-price-overrides.json'),
+      path.join(refresherStagingDir, 'model-price-overrides.json'),
+    );
     const pricingRefresherFn = new lambda.Function(this, 'PricingRefresherFn', {
       functionName: `${envPrefix}open-webui-metering-pricing-refresher`,
       runtime: lambda.Runtime.PYTHON_3_12,
       handler: 'index.handler',
-      code: lambda.Code.fromAsset(path.join(__dirname, '..', '..', 'metering', 'pricing-refresher')),
+      code: lambda.Code.fromAsset(refresherStagingDir),
       timeout: cdk.Duration.minutes(2),
       memorySize: 512,
       environment: { TABLE: this.table.tableName, REGION: cdk.Aws.REGION },

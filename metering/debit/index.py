@@ -85,7 +85,7 @@ def _catalog_entry(model: str) -> dict:
     hit = _catalog_cache.get(model)
     if hit and time.time() - hit[0] < _CATALOG_TTL:
         return hit[1]
-    entry = {"override": None, "published": None}
+    entry = {"override": None, "published": None, "default": None}
     try:
         resp = ddb.batch_get_item(
             RequestItems={
@@ -93,6 +93,7 @@ def _catalog_entry(model: str) -> dict:
                     "Keys": [
                         {"pk": {"S": f"PRICING#{model}"}, "sk": {"S": "OVERRIDE"}},
                         {"pk": {"S": f"PRICING#{model}"}, "sk": {"S": "PUBLISHED"}},
+                        {"pk": {"S": f"PRICING#{model}"}, "sk": {"S": "DEFAULT"}},
                     ]
                 }
             }
@@ -103,6 +104,8 @@ def _catalog_entry(model: str) -> dict:
                 entry["override"] = it
             elif sk == "PUBLISHED":
                 entry["published"] = it
+            elif sk == "DEFAULT":
+                entry["default"] = it
     except Exception as e:  # noqa: BLE001 — catalog read must never break settlement
         log.warning(f"pricing catalog read failed for {model}: {e}")
     _catalog_cache[model] = (time.time(), entry)
@@ -135,7 +138,10 @@ def _month_window(ts: int) -> str:
 def _rate(model: str, direction: str, tier: str = "standard"):
     """Return ($/token, source) for (model, direction, tier), or (None, "unpriced").
 
-    Precedence: operator override → AWS-published catalog → bundled file → unpriced.
+    Precedence: operator override → AWS-published → seeded default-override →
+    bundled file → unpriced. The seeded default (config/model-price-overrides.json)
+    gives frontier models AWS hasn't published a SKU for a defensible non-zero
+    estimate instead of $0; a real AWS SKU or an operator override outranks it.
     Unpriced models still record TOKENS (the invariant), price at 0, and emit an
     UnpricedModel metric so operators enter a rate rather than us guessing.
     """
@@ -146,6 +152,9 @@ def _rate(model: str, direction: str, tier: str = "standard"):
     v = _rate_from_row(cat.get("published"), direction, tier)
     if v is not None:
         return v, "aws-published"
+    v = _rate_from_row(cat.get("default"), direction, tier)
+    if v is not None:
+        return v, "default-override"
     entry = (PRICE_MAP.get("models") or {}).get(model)
     if entry:
         v = (entry.get(tier) or entry.get("standard") or {}).get(direction)

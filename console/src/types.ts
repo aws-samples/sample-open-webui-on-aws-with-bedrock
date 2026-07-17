@@ -158,7 +158,7 @@ export interface PriceRow {
   model: string;
   display_name: string;
   provider: string;
-  effective: { input: number | null; output: number | null; source: 'override' | 'aws-published' | 'unpriced' };
+  effective: { input: number | null; output: number | null; source: 'override' | 'aws-published' | 'default-override' | 'unpriced' };
   published?: {
     input?: number;
     output?: number;
@@ -174,6 +174,12 @@ export interface PriceRow {
     note?: string;
     updated_by?: string;
     updated_at?: number;
+  } | null;
+  default?: {
+    input?: number;
+    output?: number;
+    note?: string;
+    source_ref?: string;
   } | null;
 }
 

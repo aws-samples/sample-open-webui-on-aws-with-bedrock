@@ -40,6 +40,7 @@ function perM(v: number | null | undefined): string {
 function SourceBadge({ source }: { source: PriceRow['effective']['source'] }) {
   if (source === 'override') return <StatusIndicator type="info">override</StatusIndicator>;
   if (source === 'aws-published') return <StatusIndicator type="success">AWS published</StatusIndicator>;
+  if (source === 'default-override') return <StatusIndicator type="in-progress" colorOverride="blue">default (est.)</StatusIndicator>;
   return <StatusIndicator type="warning">unpriced</StatusIndicator>;
 }
 
@@ -91,8 +92,14 @@ export default function PricingPage() {
   };
 
   const counts = useMemo(() => {
-    const c = { published: 0, override: 0, unpriced: 0 };
-    for (const m of rows) c[m.effective.source === 'aws-published' ? 'published' : m.effective.source]++;
+    const c = { published: 0, override: 0, default: 0, unpriced: 0 };
+    for (const m of rows) {
+      const s = m.effective.source;
+      if (s === 'aws-published') c.published++;
+      else if (s === 'default-override') c.default++;
+      else if (s === 'override') c.override++;
+      else c.unpriced++;
+    }
     return c;
   }, [rows]);
 
@@ -106,7 +113,7 @@ export default function PricingPage() {
               ? `Effective per-model rates. Default is AWS-published pricing (last refreshed ${ago(data.meta.refreshed_at)}, version ${data.meta.version ?? '—'}); operator overrides win. Rates shown per 1M tokens.`
               : 'Effective per-model rates. Default is AWS-published pricing; operator overrides win. Rates shown per 1M tokens.'
           }
-          counter={rows.length ? `(${counts.published} published · ${counts.override} override · ${counts.unpriced} unpriced)` : undefined}
+          counter={rows.length ? `(${counts.published} published · ${counts.override} override · ${counts.default} default est. · ${counts.unpriced} unpriced)` : undefined}
           actions={
             <SpaceBetween direction="horizontal" size="xs">
               <Button iconName="refresh" onClick={refresh}>Reload</Button>
@@ -180,9 +187,12 @@ export default function PricingPage() {
             { id: 'source', header: 'Source', cell: (m) => <SourceBadge source={m.effective.source} />, width: 160 },
             {
               id: 'note',
-              header: 'Override note',
-              cell: (m) => (m.override?.note ? <Box fontSize="body-s">{m.override.note}</Box> : m.override ? <Badge>custom</Badge> : '–'),
-              minWidth: 160,
+              header: 'Note',
+              cell: (m) =>
+                m.override?.note ? <Box fontSize="body-s">{m.override.note}</Box>
+                : m.effective.source === 'default-override' && m.default?.note ? <Box fontSize="body-s" color="text-body-secondary">{m.default.note}</Box>
+                : m.override ? <Badge>custom</Badge> : '–',
+              minWidth: 200,
             },
           ]}
           empty={
