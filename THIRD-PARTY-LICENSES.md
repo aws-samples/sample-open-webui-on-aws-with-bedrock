@@ -99,3 +99,17 @@ assets at deploy time and served from S3/CloudFront; none run server-side.
 
 The sample adds no Python dependencies: the Bedrock provider uses the boto3
 version already shipped in the official Open WebUI image.
+
+## Metering pricing data (opt-in module, runtime fetch)
+
+The metering pricing refresher fetches two public, no-auth price sources at
+runtime (not vendored/redistributed):
+
+| Source | License | Use |
+|---|---|---|
+| AWS Price List Bulk API (`pricing.us-east-1.amazonaws.com` offer files) | AWS Site Terms | authoritative AWS-published Bedrock rates |
+| LiteLLM `model_prices_and_context_window.json` (github.com/BerriAI/litellm) | MIT | provider public rates for models AWS hasn't published yet (frontier gap); pinned to a commit SHA, sanity-bounded, labeled "provider list (est.)" — never presented as authoritative AWS pricing |
+
+The LiteLLM feed URL/ref is a stack env var (`PROVIDER_PRICE_URL` /
+`PROVIDER_PRICE_REF`); set it empty to disable the provider-list source. See
+docs/plans/metering-admin-console/04-PROVIDER-PRICE-SOURCE.md.

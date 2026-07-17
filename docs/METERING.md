@@ -119,8 +119,13 @@ claim** — no number is promised up front. Notes:
   `AmazonBedrockService`) and all on-demand token usage-type shapes (mantle,
   classic, cross-region) — into `PRICING#<model>/PUBLISHED` rows. Operators set
   per-model **overrides** (`PRICING#<model>/OVERRIDE`, audited) in the console.
-  The debit Lambda resolves each rate **override → AWS-published → bundled
-  `config/model-prices.json` → unpriced**, cached 5 min. So published prices
+  The debit Lambda resolves each rate **override → AWS-published →
+  provider-list → seeded default → bundled `config/model-prices.json` →
+  unpriced**, cached 5 min. The **provider-list** tier (pinned LiteLLM public
+  price JSON) supplies real Anthropic/OpenAI rates for frontier models AWS
+  hasn't published a Bedrock SKU for yet — AWS-published always wins where it
+  has a SKU (it is the invoice), and a real SKU auto-supersedes the estimate on
+  the next refresh (docs/plans/metering-admin-console/04-PROVIDER-PRICE-SOURCE.md). So published prices
   refresh with no redeploy, overrides survive refreshes, and each settled row
   records its `price_source`. Full root-cause + design:
   [`docs/plans/metering-admin-console/02-PRICING-INVESTIGATION.md`](plans/metering-admin-console/02-PRICING-INVESTIGATION.md).

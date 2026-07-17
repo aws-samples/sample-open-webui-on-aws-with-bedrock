@@ -769,16 +769,20 @@ def _catalog() -> dict:
             entry["published"] = p
         elif sk == "OVERRIDE":
             entry["override"] = p
+        elif sk == "PROVIDER":
+            entry["provider_row"] = p
         elif sk == "DEFAULT":
             entry["default"] = p
     # compute the effective rate + source for each model (precedence mirrors debit)
     out = []
     for model, e in sorted(models.items()):
-        ov, pub, dflt = e.get("override"), e.get("published"), e.get("default")
+        ov, pub, prov, dflt = e.get("override"), e.get("published"), e.get("provider_row"), e.get("default")
         if ov and (ov.get("input") is not None or ov.get("output") is not None):
             eff = {"input": ov.get("input"), "output": ov.get("output"), "source": "override"}
         elif pub:
             eff = {"input": pub.get("input"), "output": pub.get("output"), "source": "aws-published"}
+        elif prov and (prov.get("input") is not None or prov.get("output") is not None):
+            eff = {"input": prov.get("input"), "output": prov.get("output"), "source": "provider-list"}
         elif dflt and (dflt.get("input") is not None or dflt.get("output") is not None):
             eff = {"input": dflt.get("input"), "output": dflt.get("output"), "source": "default-override"}
         else:
@@ -790,6 +794,7 @@ def _catalog() -> dict:
             "effective": eff,
             "published": pub,
             "override": ov,
+            "provider_row": prov,
             "default": dflt,
         })
     return {"models": out, "meta": meta, "count": len(out)}

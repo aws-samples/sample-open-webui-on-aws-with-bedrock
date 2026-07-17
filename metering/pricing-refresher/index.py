@@ -49,6 +49,20 @@ REGION = os.environ.get("REGION", "us-east-1")
 SERVICES = ["AmazonBedrock", "AmazonBedrockService"]
 OFFER_URL = "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/{svc}/current/{region}/index.json"
 
+# Provider-list price source (docs/plans/metering-admin-console/04-PROVIDER-PRICE-SOURCE.md):
+# LiteLLM's community price JSON — the de-facto machine-readable list of provider
+# public rates, keyed by Bedrock-namespaced model ids. Fills the gap for models
+# AWS hasn't published a SKU for yet (frontier Claude/GPT versions). PINNED to a
+# commit SHA (not floating main) so an upstream edit can't silently move dollars;
+# override via env to re-pin or disable (set PROVIDER_PRICE_URL="").
+PROVIDER_PRICE_REF = os.environ.get("PROVIDER_PRICE_REF", "ba70189e328a5376700e9535d0629118857395e7")
+PROVIDER_PRICE_URL = os.environ.get(
+    "PROVIDER_PRICE_URL",
+    f"https://raw.githubusercontent.com/BerriAI/litellm/{PROVIDER_PRICE_REF}/model_prices_and_context_window.json",
+)
+# reject implausible rates before they touch a billing path (per-token USD)
+_MAX_SANE_RATE = 1.0
+
 
 def _load_seed_overrides() -> dict:
     """Curated default overrides for frontier model ids AWS hasn't published a
@@ -187,6 +201,111 @@ def _seed_defaults(published_models: set) -> int:
     return written
 
 
+_VER_SUFFIX = re.compile(r"(-\d{8})?(-v\d+:\d+)?(@\d{8})?$")
+
+
+def _normalize_provider_keys(k: str) -> list:
+    """Map a LiteLLM key to the model id(s) our debit/interceptor settle under.
+    They use ids like 'anthropic.claude-sonnet-5' / 'openai.gpt-5.6-sol' (gateway
+    'bedrock/' or 'bedrock_mantle/' prefix and region qualifiers stripped).
+    LiteLLM keys take many shapes: 'anthropic.claude-sonnet-5',
+    'bedrock_mantle/openai.gpt-5.6-sol', 'us.anthropic.claude-…',
+    'anthropic.claude-haiku-4-5-20251001-v1:0'. Returns the canonical id AND a
+    version-suffix-trimmed alias (so a dated/versioned SKU also matches our bare
+    id); empty list if it isn't a Bedrock-family model id."""
+    k = k.strip()
+    for pfx in ("bedrock_mantle/", "bedrock_converse/", "bedrock/"):
+        if k.startswith(pfx):
+            k = k[len(pfx):]
+            break
+    # drop leading region scopes: us. eu. apac. global. <region>.
+    parts = k.split(".")
+    if len(parts) > 2 and parts[0] in ("us", "eu", "apac", "global", "ap", "ca", "sa"):
+        k = ".".join(parts[1:])
+    if "." not in k:  # not a provider.model id (e.g. bare 'claude-…' or 'azure/…')
+        return []
+    ids = {k}
+    trimmed = _VER_SUFFIX.sub("", k)
+    if trimmed and trimmed != k:
+        ids.add(trimmed)
+    return list(ids)
+
+
+def _fetch_provider_rates() -> dict:
+    """Return {model_id: {'input':x,'output':y,'cache-read':z,'_key':litellm_key}}
+    for Bedrock-namespaced models with sane token costs. Never raises."""
+    if not PROVIDER_PRICE_URL:
+        return {}
+    out: dict = {}
+    try:
+        with urllib.request.urlopen(PROVIDER_PRICE_URL, timeout=60) as r:  # noqa: S310 — pinned https URL
+            data = json.loads(r.read())
+    except Exception as e:  # noqa: BLE001
+        log.warning(f"provider price list unavailable: {e}")
+        _metric("ProviderPriceFetchFailure")
+        return {}
+    def sane(v):
+        return isinstance(v, (int, float)) and 0 < float(v) <= _MAX_SANE_RATE
+
+    for key, spec in data.items():
+        if not isinstance(spec, dict):
+            continue
+        prov = str(spec.get("litellm_provider", ""))
+        if "bedrock" not in prov:  # only Bedrock-served rows apply to our bill
+            continue
+        model_ids = _normalize_provider_keys(key)
+        if not model_ids:
+            continue
+        entry = {}
+        if sane(spec.get("input_cost_per_token")):
+            entry["input"] = float(spec["input_cost_per_token"])
+        if sane(spec.get("output_cost_per_token")):
+            entry["output"] = float(spec["output_cost_per_token"])
+        if sane(spec.get("cache_read_input_token_cost")):
+            entry["cache-read"] = float(spec["cache_read_input_token_cost"])
+        if not entry:
+            continue
+        for model_id in model_ids:
+            e = dict(entry)
+            e["_key"] = key
+            # an EXACT key match beats a version-trimmed alias; among same-kind,
+            # the shortest (most canonical, region-unqualified) key wins.
+            e["_exact"] = model_id == key
+            prev = out.get(model_id)
+            if (not prev
+                    or (e["_exact"] and not prev.get("_exact"))
+                    or (e["_exact"] == prev.get("_exact") and len(key) < len(prev.get("_key", "")))):
+                out[model_id] = e
+    return out
+
+
+def _write_provider(provider_rates: dict, published_models: set) -> int:
+    """Write PRICING#<model>/PROVIDER rows ONLY for models AWS did not publish —
+    AWS is authoritative for the actual invoice where it has a SKU."""
+    now = int(time.time())
+    written = 0
+    for model_id, entry in provider_rates.items():
+        if model_id in published_models:
+            continue  # AWS prices it — provider list is a proxy only for the gap
+        item = {
+            "pk": {"S": f"PRICING#{model_id}"},
+            "sk": {"S": "PROVIDER"},
+            "model": {"S": model_id},
+            "source": {"S": "provider-list"},
+            "source_ref": {"S": f"litellm@{PROVIDER_PRICE_REF[:12]}:{entry.get('_key','')}"[:256]},
+            "updated_at": {"N": str(now)},
+        }
+        tiers = {"standard": {k: v for k, v in entry.items() if not k.startswith("_")}}
+        item["tiers"] = {"S": json.dumps(tiers)}
+        if "input" in entry:
+            item["input"] = {"N": str(entry["input"])}
+        if "output" in entry:
+            item["output"] = {"N": str(entry["output"])}
+        ddb.put_item(TableName=TABLE, Item=item)
+        written += 1
+    return written
+
+
 def handler(event, context):
     started = time.time()
     try:
@@ -196,6 +315,7 @@ def handler(event, context):
             log.error("no models parsed from any offer file")
             return {"ok": False, "models": 0}
         written = _write_published(models, version)
+        provider_written = _write_provider(_fetch_provider_rates(), set(models.keys()))
         seeded = _seed_defaults(set(models.keys()))
         # marker row so the admin API / console can show last-refresh time + version
         ddb.put_item(
@@ -205,15 +325,17 @@ def handler(event, context):
                 "sk": {"S": "META"},
                 "version": {"S": str(version)},
                 "model_count": {"N": str(written)},
+                "provider_count": {"N": str(provider_written)},
                 "seeded_defaults": {"N": str(seeded)},
+                "provider_ref": {"S": PROVIDER_PRICE_REF[:40]},
                 "region": {"S": REGION},
                 "refreshed_at": {"N": str(int(started))},
                 "duration_ms": {"N": str(int((time.time() - started) * 1000))},
             },
         )
         _metric("PricingRefreshModels", written)
-        log.info(json.dumps({"ok": True, "models": written, "seeded": seeded, "version": version}))
-        return {"ok": True, "models": written, "seeded": seeded, "version": version}
+        log.info(json.dumps({"ok": True, "models": written, "provider": provider_written, "seeded": seeded, "version": version}))
+        return {"ok": True, "models": written, "provider": provider_written, "seeded": seeded, "version": version}
     except Exception as e:  # noqa: BLE001
         _metric("PricingRefreshFailure")
         log.exception("pricing refresh failed")
