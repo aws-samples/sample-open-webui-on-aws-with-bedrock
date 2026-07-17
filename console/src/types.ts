@@ -154,6 +154,40 @@ export interface SearchUser {
   groups: string[];
 }
 
+export interface PriceRow {
+  model: string;
+  display_name: string;
+  provider: string;
+  effective: { input: number | null; output: number | null; source: 'override' | 'aws-published' | 'unpriced' };
+  published?: {
+    input?: number;
+    output?: number;
+    provider?: string;
+    display_name?: string;
+    effective_date?: string;
+    price_map_version?: string;
+    updated_at?: number;
+  } | null;
+  override?: {
+    input?: number;
+    output?: number;
+    note?: string;
+    updated_by?: string;
+    updated_at?: number;
+  } | null;
+}
+
+export interface PricingCatalog {
+  models: PriceRow[];
+  count: number;
+  meta: {
+    version?: string;
+    model_count?: number;
+    region?: string;
+    refreshed_at?: number;
+  };
+}
+
 export interface UsageMe {
   sub: string;
   window: string;

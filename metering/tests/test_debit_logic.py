@@ -37,12 +37,15 @@ debit = _load("debit", {"TABLE": "t", "PRICE_MAP": PRICE_MAP, "SNS_TOPIC": ""})
 
 
 def test_rate_lookup_and_unpriced():
-    assert debit._rate("qwen.qwen3-32b", "input") == 1.5e-07
-    assert debit._rate("qwen.qwen3-32b", "output") == 6e-07
+    # _rate returns (rate, source). With no DynamoDB catalog reachable in unit
+    # tests, the catalog read fails soft and it falls through to the bundled map.
+    debit._catalog_cache.clear()
+    assert debit._rate("qwen.qwen3-32b", "input") == (1.5e-07, "bundled")
+    assert debit._rate("qwen.qwen3-32b", "output") == (6e-07, "bundled")
     # tier falls back to standard
-    assert debit._rate("qwen.qwen3-32b", "input", "flex") == 1.5e-07
-    # unpriced model (the claude/gpt-5 gap) returns None, never a guess
-    assert debit._rate("anthropic.claude-sonnet-5", "input") is None
+    assert debit._rate("qwen.qwen3-32b", "input", "flex") == (1.5e-07, "bundled")
+    # unpriced model (the claude/gpt-5 gap) returns (None, "unpriced"), never a guess
+    assert debit._rate("anthropic.claude-sonnet-5", "input") == (None, "unpriced")
 
 
 def test_idempotency_key_preference():
@@ -73,9 +76,16 @@ def test_model_normalization_via_settle_key_paths():
 
 def test_price_map_file_is_wired_shape():
     prices = json.loads((HERE.parent.parent / "config" / "model-prices.json").read_text())
-    assert prices["models"], "generated price map must not be empty"
-    sample = next(iter(prices["models"].values()))
-    tier = sample.get("standard") or next(iter(sample.values()))
-    assert "input" in tier and "output" in tier
+    models = prices["models"]
+    assert models, "generated price map must not be empty"
+    # A well-known mantle model our gateway bills under must carry both directions
+    # (some catalog models publish input-only, so don't assert on an arbitrary first entry).
+    q = models.get("qwen.qwen3-32b", {}).get("standard", {})
+    assert "input" in q and "output" in q, "qwen.qwen3-32b should have input+output rates"
     # per-token (not per-1K) sanity: frontier input prices are < $0.001/token
-    assert float(tier["input"]) < 1e-3
+    assert float(q["input"]) < 1e-3
+    # every entry that has any rate stores per-token floats (never per-1K)
+    for name, tiers in models.items():
+        std = tiers.get("standard", {})
+        if "input" in std:
+            assert float(std["input"]) < 1e-2, f"{name} input rate looks like per-1K, not per-token"

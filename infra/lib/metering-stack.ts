@@ -347,6 +347,40 @@ export class MeteringStack extends cdk.Stack {
     });
     driftAlarm.addAlarmAction(new cwactions.SnsAction(this.alertsTopic));
 
+    // ── Pricing refresher: keep the model pricing catalog current from the AWS
+    //    Price List Bulk API (docs/plans/metering-admin-console/02-PRICING-INVESTIGATION.md).
+    //    Writes PRICING#<model>/PUBLISHED rows; operator overrides (PRICING#/OVERRIDE)
+    //    are written by the admin API and win at settle time. Egress to the public
+    //    pricing.us-east-1.amazonaws.com offer files — no VPC, no auth needed.
+    const pricingRefresherFn = new lambda.Function(this, 'PricingRefresherFn', {
+      functionName: `${envPrefix}open-webui-metering-pricing-refresher`,
+      runtime: lambda.Runtime.PYTHON_3_12,
+      handler: 'index.handler',
+      code: lambda.Code.fromAsset(path.join(__dirname, '..', '..', 'metering', 'pricing-refresher')),
+      timeout: cdk.Duration.minutes(2),
+      memorySize: 512,
+      environment: { TABLE: this.table.tableName, REGION: cdk.Aws.REGION },
+      logRetention: logs.RetentionDays.ONE_MONTH,
+    });
+    this.table.grantReadWriteData(pricingRefresherFn);
+    pricingRefresherFn.addToRolePolicy(metricsPolicy);
+    // Daily refresh (published rates change infrequently; overrides are instant).
+    new events.Rule(this, 'PricingRefreshSchedule', {
+      schedule: events.Schedule.rate(cdk.Duration.hours(24)),
+      targets: [new targets.LambdaFunction(pricingRefresherFn)],
+    });
+    const pricingRefreshAlarm = new cloudwatch.Alarm(this, 'PricingRefreshAlarm', {
+      alarmName: `${envPrefix}open-webui-metering-pricing-refresh`,
+      metric: new cloudwatch.Metric({
+        namespace: 'Metering', metricName: 'PricingRefreshFailure',
+        statistic: 'Sum', period: cdk.Duration.hours(24),
+      }),
+      threshold: 1,
+      evaluationPeriods: 1,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+    pricingRefreshAlarm.addAlarmAction(new cwactions.SnsAction(this.alertsTopic));
+
     // ── Admin API: the operator control surface, outside Open WebUI ────────
     // Serves the CLI (scripts/set-quota.sh) AND the admin console (console/).
     const enforceMode = this.node.tryGetContext('meteringMode') === 'observe' ? 'OBSERVE' : 'ENFORCE';
@@ -364,12 +398,15 @@ export class MeteringStack extends cdk.Stack {
         ALARM_PREFIX: `${envPrefix}open-webui-metering`,
         ENFORCE_MODE: enforceMode,
         PRICE_MAP_VERSION: String(priceMap.version),
+        PRICING_REFRESHER_FN: pricingRefresherFn.functionName,
         HARD_DEFAULT_USD: '5',
         SOFT_DEFAULT_USD: '4',
       },
       logRetention: logs.RetentionDays.ONE_MONTH,
     });
     this.table.grantReadWriteData(adminFn);
+    // Admin can trigger an on-demand pricing refresh from the console.
+    pricingRefresherFn.grantInvoke(adminFn);
     // Console read surfaces beyond the table — all read-only, resource-scoped
     // where the service supports it (GetMetricData has no resource ARNs).
     adminFn.addToRolePolicy(new iam.PolicyStatement({
@@ -439,6 +476,9 @@ export class MeteringStack extends cdk.Stack {
       ['/alarms', [apigwv2.HttpMethod.GET]],
       ['/alert-subscriptions', [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.POST, apigwv2.HttpMethod.DELETE]],
       ['/config', [apigwv2.HttpMethod.GET]],
+      ['/pricing', [apigwv2.HttpMethod.GET]],
+      ['/pricing/{model}', [apigwv2.HttpMethod.PUT, apigwv2.HttpMethod.DELETE]],
+      ['/pricing/refresh', [apigwv2.HttpMethod.POST]],
       ['/override', [apigwv2.HttpMethod.POST]],
       ['/counter-reset', [apigwv2.HttpMethod.POST]],
     ] as const) {

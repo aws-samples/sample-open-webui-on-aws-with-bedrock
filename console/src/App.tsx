@@ -27,6 +27,7 @@ import GroupsPage from './pages/GroupsPage';
 import HealthPage from './pages/HealthPage';
 import MyUsagePage from './pages/MyUsagePage';
 import PoliciesPage from './pages/PoliciesPage';
+import PricingPage from './pages/PricingPage';
 import UserDetailPage from './pages/UserDetailPage';
 import UsersPage from './pages/UsersPage';
 
@@ -83,6 +84,7 @@ export default function App() {
       { type: 'link' as const, text: 'Users', href: '/users' },
       { type: 'link' as const, text: 'Teams & groups', href: '/groups' },
       { type: 'link' as const, text: 'Quota policies', href: '/policies' },
+      { type: 'link' as const, text: 'Model pricing', href: '/pricing' },
       { type: 'link' as const, text: 'Audit trail', href: '/audit' },
       { type: 'link' as const, text: 'Module health', href: '/health' },
       { type: 'divider' as const },
@@ -239,6 +241,7 @@ export default function App() {
                   <Route path="/users/:sub" element={<UserDetailPage />} />
                   <Route path="/groups" element={<GroupsPage />} />
                   <Route path="/policies" element={<PoliciesPage />} />
+                  <Route path="/pricing" element={<PricingPage />} />
                   <Route path="/audit" element={<AuditPage />} />
                   <Route path="/health" element={<HealthPage />} />
                   <Route path="/me" element={<MyUsagePage />} />

@@ -1,15 +1,1211 @@
 {
-  "_comment": "Per-TOKEN USD rates for bedrock-mantle usage types, generated from the AWS Price List offer file \u2014 regenerate with scripts/generate-price-map.py. Models in the live catalog but absent here are UNPRICED (the debit Lambda records tokens, prices at $0, and raises the UnpricedModel alarm); add them under 'overrides' with operator-entered rates. Repricing can be backdated: compare 'version' + per-entry '_effective' before trusting historical dollars.",
+  "_comment": "Per-TOKEN USD rates for Bedrock inference, generated from the AWS Price List Bulk API (all Bedrock offer files, all on-demand token usage-type shapes) \u2014 regenerate with scripts/generate-price-map.py. Models in the live catalog but absent here are UNPRICED (debit records tokens, prices at $0, raises the UnpricedModel alarm); add operator rates under 'overrides' (also editable in the admin console Pricing Catalog). Repricing can be backdated: compare 'version' + per-entry '_effective' before trusting historical dollars.",
   "region": "us-east-1",
   "version": "20260707080509",
-  "publication_date": "2026-07-07T08:05:09Z",
-  "generated_at": "2026-07-15T10:43:29Z",
+  "source_versions": {
+    "AmazonBedrock": "20260707080509",
+    "AmazonBedrockService": "20260706161958"
+  },
+  "publication_dates": {
+    "AmazonBedrock": "2026-07-07T08:05:09Z",
+    "AmazonBedrockService": "2026-07-06T16:19:58Z"
+  },
+  "generated_at": "2026-07-17T00:11:52Z",
   "models": {
+    "Claude2.0": {
+      "standard": {
+        "input": 8e-06,
+        "_effective": "2026-07-01T00:00:00Z"
+      },
+      "_meta": {
+        "display_name": "Claude 2.0",
+        "provider": "Anthropic",
+        "service": "AmazonBedrock"
+      }
+    },
+    "Claude2.1": {
+      "standard": {
+        "input": 8e-06,
+        "_effective": "2026-07-01T00:00:00Z"
+      },
+      "_meta": {
+        "display_name": "Claude 2.1",
+        "provider": "Anthropic",
+        "service": "AmazonBedrock"
+      }
+    },
+    "Claude3Haiku": {
+      "standard": {
+        "input": 2.5e-07,
+        "_effective": "2026-07-01T00:00:00Z"
+      },
+      "_meta": {
+        "display_name": "Claude 3 Haiku",
+        "provider": "Anthropic",
+        "service": "AmazonBedrock"
+      }
+    },
+    "Claude3Sonnet": {
+      "standard": {
+        "input": 3e-06,
+        "_effective": "2026-07-01T00:00:00Z"
+      },
+      "_meta": {
+        "display_name": "Claude 3 Sonnet",
+        "provider": "Anthropic",
+        "service": "AmazonBedrock"
+      }
+    },
+    "Claude4Sonnet": {
+      "batch": {
+        "output": 7.499999999999999e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 1.5e-06
+      },
+      "_meta": {
+        "display_name": "Claude Sonnet 4",
+        "provider": "Anthropic",
+        "service": "AmazonBedrockService"
+      },
+      "standard": {
+        "output": 1.4999999999999999e-05,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 3e-06
+      }
+    },
+    "ClaudeInstant": {
+      "standard": {
+        "input": 8.000000000000001e-07,
+        "_effective": "2026-07-01T00:00:00Z"
+      },
+      "_meta": {
+        "display_name": "Claude Instant",
+        "provider": "Anthropic",
+        "service": "AmazonBedrock"
+      }
+    },
+    "DeepSeek-R1": {
+      "standard": {
+        "input": 1.35e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 5.4e-06
+      },
+      "_meta": {
+        "display_name": "R1",
+        "provider": "DeepSeek",
+        "service": "AmazonBedrock"
+      }
+    },
+    "GPT-OSS-Safeguard-120B": {
+      "flex": {
+        "input": 6.999999999999999e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 3e-07
+      },
+      "_meta": {
+        "display_name": "GPT OSS Safeguard 120B",
+        "provider": "OpenAI",
+        "service": "AmazonBedrock"
+      },
+      "batch": {
+        "input": 6.999999999999999e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 3e-07
+      },
+      "priority": {
+        "input": 2.6e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.05e-06
+      },
+      "standard": {
+        "output": 6e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 1.5e-07
+      }
+    },
+    "GPT-OSS-Safeguard-20B": {
+      "batch": {
+        "output": 1.0000000000000001e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 3.0000000000000004e-08
+      },
+      "_meta": {
+        "display_name": "GPT OSS Safeguard 20B",
+        "provider": "OpenAI",
+        "service": "AmazonBedrock"
+      },
+      "flex": {
+        "input": 3.0000000000000004e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.0000000000000001e-07
+      },
+      "standard": {
+        "output": 2.0000000000000002e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 6.999999999999999e-08
+      },
+      "priority": {
+        "input": 1.2000000000000002e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 3.5e-07
+      }
+    },
+    "Gemma-3-12B-IT": {
+      "batch": {
+        "input": 5.0000000000000004e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.5e-07
+      },
+      "_meta": {
+        "display_name": "Gemma 3 12B",
+        "provider": "Google",
+        "service": "AmazonBedrock"
+      },
+      "priority": {
+        "input": 1.6e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 5.1e-07
+      },
+      "standard": {
+        "input": 9.000000000000001e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 2.9e-07
+      },
+      "flex": {
+        "input": 5.0000000000000004e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.5e-07
+      }
+    },
+    "Gemma-3-27B-IT": {
+      "flex": {
+        "input": 1.2000000000000002e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.9e-07
+      },
+      "_meta": {
+        "display_name": "Gemma 3 27B",
+        "provider": "Google",
+        "service": "AmazonBedrock"
+      },
+      "batch": {
+        "input": 1.2000000000000002e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.9e-07
+      },
+      "priority": {
+        "input": 4.0000000000000003e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 6.7e-07
+      },
+      "standard": {
+        "output": 3.8e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 2.3e-07
+      }
+    },
+    "Gemma-3-4B-IT": {
+      "flex": {
+        "output": 4e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 2e-08
+      },
+      "_meta": {
+        "display_name": "Gemma 3 4B",
+        "provider": "Google",
+        "service": "AmazonBedrock"
+      },
+      "standard": {
+        "output": 8e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 4e-08
+      },
+      "priority": {
+        "output": 1.3999999999999998e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 6.999999999999999e-08
+      },
+      "batch": {
+        "output": 4e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 2e-08
+      }
+    },
+    "Kimi-K2-Thinking": {
+      "priority": {
+        "input": 1.05e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 4.38e-06
+      },
+      "_meta": {
+        "display_name": "Kimi K2 Thinking",
+        "provider": "Kimi AI",
+        "service": "AmazonBedrock"
+      },
+      "batch": {
+        "input": 3e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.25e-06
+      },
+      "standard": {
+        "input": 6e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 2.5e-06
+      },
+      "flex": {
+        "output": 1.25e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 3e-07
+      }
+    },
+    "Llama3-1-405B": {
+      "batch": {
+        "output": 1.2e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 1.2e-06
+      },
+      "_meta": {
+        "display_name": "Llama 3.1 405B",
+        "provider": "Meta",
+        "service": "AmazonBedrock"
+      }
+    },
+    "Llama3-1-70B": {
+      "batch": {
+        "input": 3.6000000000000005e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 3.6000000000000005e-07
+      },
+      "_meta": {
+        "display_name": "Llama 3.1 70B",
+        "provider": "Meta",
+        "service": "AmazonBedrock"
+      },
+      "standard": {
+        "input": 7.200000000000001e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 7.200000000000001e-07
+      }
+    },
+    "Llama3-1-8B": {
+      "batch": {
+        "input": 1.1e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.1e-07
+      },
+      "_meta": {
+        "display_name": "Llama 3.1 8B",
+        "provider": "Meta",
+        "service": "AmazonBedrock"
+      },
+      "standard": {
+        "input": 2.2e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 2.2e-07
+      }
+    },
+    "Llama3-2-11B": {
+      "standard": {
+        "input": 1.6e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.6e-07
+      },
+      "_meta": {
+        "display_name": "Llama 3.2 11B",
+        "provider": "Meta",
+        "service": "AmazonBedrock"
+      }
+    },
+    "Llama3-2-1B": {
+      "standard": {
+        "output": 1.0000000000000001e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 1.0000000000000001e-07
+      },
+      "_meta": {
+        "display_name": "Llama 3.2 1B",
+        "provider": "Meta",
+        "service": "AmazonBedrock"
+      }
+    },
+    "Llama3-2-3B": {
+      "standard": {
+        "output": 1.5e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 1.5e-07
+      },
+      "_meta": {
+        "display_name": "Llama 3.2 3B",
+        "provider": "Meta",
+        "service": "AmazonBedrock"
+      }
+    },
+    "Llama3-2-90B": {
+      "standard": {
+        "output": 7.200000000000001e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 7.200000000000001e-07
+      },
+      "_meta": {
+        "display_name": "Llama 3.2 90B",
+        "provider": "Meta",
+        "service": "AmazonBedrock"
+      }
+    },
+    "Llama3-3-70B": {
+      "standard": {
+        "input": 7.200000000000001e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 7.200000000000001e-07
+      },
+      "_meta": {
+        "display_name": "Llama 3.3 70B",
+        "provider": "Meta",
+        "service": "AmazonBedrock"
+      },
+      "batch": {
+        "input": 3.6000000000000005e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 3.6000000000000005e-07
+      }
+    },
+    "Llama3-70B": {
+      "standard": {
+        "input": 2.65e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 3.5e-06
+      },
+      "_meta": {
+        "display_name": "Llama 3 70B",
+        "provider": "Meta",
+        "service": "AmazonBedrock"
+      }
+    },
+    "Llama3-8B": {
+      "standard": {
+        "output": 6e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 3e-07
+      },
+      "_meta": {
+        "display_name": "Llama 3 8B",
+        "provider": "Meta",
+        "service": "AmazonBedrock"
+      }
+    },
+    "Llama4-Maverick-17B": {
+      "batch": {
+        "output": 4.85e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 1.2000000000000002e-07
+      },
+      "_meta": {
+        "display_name": "Llama 4 Maverick 17B",
+        "provider": "Meta",
+        "service": "AmazonBedrock"
+      },
+      "standard": {
+        "input": 2.4000000000000003e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 9.7e-07
+      }
+    },
+    "Llama4-Scout-17B": {
+      "standard": {
+        "output": 6.6e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 1.7000000000000001e-07
+      },
+      "_meta": {
+        "display_name": "Llama 4 Scout 17B",
+        "provider": "Meta",
+        "service": "AmazonBedrock"
+      },
+      "batch": {
+        "input": 8.500000000000001e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 3.3e-07
+      }
+    },
+    "Magistral-Small-2509": {
+      "batch": {
+        "input": 2.5e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 7.5e-07
+      },
+      "_meta": {
+        "display_name": "Magistral Small 1.2",
+        "provider": "Mistral",
+        "service": "AmazonBedrock"
+      },
+      "flex": {
+        "input": 2.5e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 7.5e-07
+      },
+      "standard": {
+        "input": 5e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.5e-06
+      },
+      "priority": {
+        "input": 8.8e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 2.63e-06
+      }
+    },
+    "Minimax-M2": {
+      "standard": {
+        "output": 1.2e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 3e-07
+      },
+      "_meta": {
+        "display_name": "Minimax M2",
+        "provider": "Minimax AI",
+        "service": "AmazonBedrock"
+      },
+      "priority": {
+        "output": 2.1e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 5.2e-07
+      },
+      "batch": {
+        "output": 6e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 1.5e-07
+      },
+      "flex": {
+        "output": 6e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 1.5e-07
+      }
+    },
+    "Ministral-3-14b-Instruct": {
+      "batch": {
+        "input": 1.0000000000000001e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.0000000000000001e-07
+      },
+      "_meta": {
+        "display_name": "Ministral 14B 3.0",
+        "provider": "Mistral",
+        "service": "AmazonBedrock"
+      },
+      "priority": {
+        "output": 3.5e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 3.5e-07
+      },
+      "flex": {
+        "input": 1.0000000000000001e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.0000000000000001e-07
+      },
+      "standard": {
+        "output": 2.0000000000000002e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 2.0000000000000002e-07
+      }
+    },
+    "Ministral-3-3b-Instruct": {
+      "batch": {
+        "output": 5.0000000000000004e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 5.0000000000000004e-08
+      },
+      "_meta": {
+        "display_name": "Ministral 3B 3.0",
+        "provider": "Mistral",
+        "service": "AmazonBedrock"
+      },
+      "flex": {
+        "input": 5.0000000000000004e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 5.0000000000000004e-08
+      },
+      "priority": {
+        "output": 1.7000000000000001e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 1.7000000000000001e-07
+      },
+      "standard": {
+        "input": 1.0000000000000001e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.0000000000000001e-07
+      }
+    },
+    "Ministral-3-8b-Instruct": {
+      "standard": {
+        "input": 1.5e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.5e-07
+      },
+      "_meta": {
+        "display_name": "Ministral 8B 3.0",
+        "provider": "Mistral",
+        "service": "AmazonBedrock"
+      },
+      "priority": {
+        "input": 2.6e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 2.6e-07
+      },
+      "flex": {
+        "output": 6.999999999999999e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 6.999999999999999e-08
+      },
+      "batch": {
+        "input": 6.999999999999999e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 6.999999999999999e-08
+      }
+    },
+    "Mistral-Large-3-675b-Instruct": {
+      "flex": {
+        "output": 7.5e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 2.5e-07
+      },
+      "_meta": {
+        "display_name": "Mistral Large 3",
+        "provider": "Mistral",
+        "service": "AmazonBedrock"
+      },
+      "batch": {
+        "input": 2.5e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 7.5e-07
+      },
+      "priority": {
+        "input": 8.8e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 2.63e-06
+      },
+      "standard": {
+        "input": 5e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.5e-06
+      }
+    },
+    "Mistral7B": {
+      "standard": {
+        "input": 1.5e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 2.0000000000000002e-07
+      },
+      "_meta": {
+        "display_name": "Mistral 7B",
+        "provider": "Mistral",
+        "service": "AmazonBedrock"
+      }
+    },
+    "MistralLarge": {
+      "standard": {
+        "input": 4e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.2e-05
+      },
+      "_meta": {
+        "display_name": "Mistral Large",
+        "provider": "Mistral",
+        "service": "AmazonBedrock"
+      }
+    },
+    "MistralSmall": {
+      "batch": {
+        "input": 5e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.5e-06
+      },
+      "_meta": {
+        "display_name": "Mistral Small",
+        "provider": "Mistral",
+        "service": "AmazonBedrock"
+      },
+      "standard": {
+        "input": 1e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 3e-06
+      }
+    },
+    "Mixtral8x7B": {
+      "standard": {
+        "output": 7e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 4.5e-07
+      },
+      "_meta": {
+        "display_name": "Mixtral 8x7B",
+        "provider": "Mistral",
+        "service": "AmazonBedrock"
+      }
+    },
+    "Nemotron-Nano-12B-V2-VL-BF16": {
+      "priority": {
+        "input": 3.5e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.05e-06
+      },
+      "_meta": {
+        "display_name": "NVIDIA Nemotron Nano 2 VL",
+        "provider": "Nvidia",
+        "service": "AmazonBedrock"
+      },
+      "flex": {
+        "input": 1.0000000000000001e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 3e-07
+      },
+      "batch": {
+        "output": 3e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 1.0000000000000001e-07
+      },
+      "standard": {
+        "output": 6e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 2.0000000000000002e-07
+      }
+    },
+    "Nemotron-Nano-3-30B": {
+      "batch": {
+        "output": 1.2000000000000002e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 3.0000000000000004e-08
+      },
+      "_meta": {
+        "display_name": "Nemotron Nano 3 30B",
+        "provider": "Nvidia",
+        "service": "AmazonBedrock"
+      },
+      "standard": {
+        "input": 6.000000000000001e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 2.4000000000000003e-07
+      },
+      "priority": {
+        "input": 1.1e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 4.2e-07
+      },
+      "flex": {
+        "output": 1.2000000000000002e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 3.0000000000000004e-08
+      }
+    },
+    "Nemotron-Nano-9B-V2": {
+      "standard": {
+        "output": 2.3e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 6.000000000000001e-08
+      },
+      "_meta": {
+        "display_name": "NVIDIA Nemotron Nano 2",
+        "provider": "Nvidia",
+        "service": "AmazonBedrock"
+      },
+      "priority": {
+        "output": 4.0000000000000003e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 1.1e-07
+      },
+      "flex": {
+        "output": 1.2000000000000002e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 3.0000000000000004e-08
+      },
+      "batch": {
+        "output": 1.2000000000000002e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 3.0000000000000004e-08
+      }
+    },
+    "Nova2.0Lite": {
+      "batch": {
+        "output": 1.25e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 1.65e-07
+      },
+      "_meta": {
+        "display_name": "Nova 2.0 Lite",
+        "provider": "",
+        "service": "AmazonBedrock"
+      },
+      "standard": {
+        "input": 3e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 2.5e-06
+      },
+      "flex": {
+        "input": 1.65e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.375e-06
+      },
+      "priority": {
+        "output": 4.8125e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 5.775e-07
+      }
+    },
+    "Nova2.0Omni-text": {
+      "standard": {
+        "input": 3e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 2.8e-06
+      },
+      "_meta": {
+        "display_name": "Nova 2.0 Omni",
+        "provider": "",
+        "service": "AmazonBedrock"
+      },
+      "batch": {
+        "input": 2.0000000000000002e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.2999999999999998e-06
+      },
+      "flex": {
+        "output": 1.4e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 2.0000000000000002e-07
+      },
+      "priority": {
+        "output": 4.8e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 6e-07
+      }
+    },
+    "Nova2.0Pro-text": {
+      "batch": {
+        "output": 5.5e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 6.25e-07
+      },
+      "_meta": {
+        "display_name": "Nova 2.0 Pro",
+        "provider": "",
+        "service": "AmazonBedrock"
+      },
+      "standard": {
+        "input": 1.25e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1e-05
+      },
+      "priority": {
+        "input": 2.40625e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.925e-05
+      },
+      "flex": {
+        "input": 6.875e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 5.5e-06
+      }
+    },
+    "NovaLite": {
+      "batch": {
+        "output": 1.2000000000000002e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 3.0000000000000004e-08
+      },
+      "_meta": {
+        "display_name": "Nova Lite",
+        "provider": "",
+        "service": "AmazonBedrock"
+      },
+      "standard": {
+        "output": 2.4000000000000003e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 6.000000000000001e-08
+      }
+    },
+    "NovaMicro": {
+      "standard": {
+        "input": 3.4999999999999996e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.3999999999999998e-07
+      },
+      "_meta": {
+        "display_name": "Nova Micro",
+        "provider": "",
+        "service": "AmazonBedrock"
+      },
+      "batch": {
+        "output": 6.999999999999999e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 1.7499999999999998e-08
+      }
+    },
+    "NovaMultiModalEmbeddings": {
+      "standard": {
+        "input": 1.35e-07,
+        "_effective": "2026-07-01T00:00:00Z"
+      },
+      "_meta": {
+        "display_name": "NovaMultiModalEmbeddings",
+        "provider": "",
+        "service": "AmazonBedrock"
+      },
+      "batch": {
+        "input": 6.75e-08,
+        "_effective": "2026-07-01T00:00:00Z"
+      }
+    },
+    "NovaPremier": {
+      "batch": {
+        "output": 6.25e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 1.25e-06
+      },
+      "_meta": {
+        "display_name": "Nova Premier",
+        "provider": "",
+        "service": "AmazonBedrock"
+      },
+      "flex": {
+        "output": 6.25e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 1.25e-06
+      },
+      "standard": {
+        "input": 2.5e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.25e-05
+      },
+      "priority": {
+        "input": 4.3750000000000005e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 2.1875e-05
+      }
+    },
+    "NovaPro": {
+      "batch": {
+        "input": 4.0000000000000003e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.6000000000000001e-06
+      },
+      "_meta": {
+        "display_name": "Nova Pro",
+        "provider": "",
+        "service": "AmazonBedrock"
+      },
+      "standard": {
+        "output": 3.2000000000000003e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 8.000000000000001e-07
+      },
+      "flex": {
+        "input": 4.0000000000000003e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.6000000000000001e-06
+      },
+      "priority": {
+        "input": 1.4e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 5.6e-06
+      }
+    },
+    "NovaSonic-speech": {
+      "standard": {
+        "output": 1.3599999999999999e-05,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 3.3999999999999996e-06
+      },
+      "_meta": {
+        "display_name": "Nova Sonic",
+        "provider": "",
+        "service": "AmazonBedrock"
+      }
+    },
+    "NovaSonic-text": {
+      "standard": {
+        "output": 2.4000000000000003e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 6.000000000000001e-08
+      },
+      "_meta": {
+        "display_name": "Nova Sonic",
+        "provider": "",
+        "service": "AmazonBedrock"
+      }
+    },
+    "NovaSonic2.0-speech": {
+      "standard": {
+        "output": 1.2e-05,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 3e-06
+      },
+      "_meta": {
+        "display_name": "Nova Sonic 2.0",
+        "provider": "",
+        "service": "AmazonBedrock"
+      }
+    },
+    "NovaSonic2.0-text": {
+      "standard": {
+        "input": 3.3e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 2.75e-06
+      },
+      "_meta": {
+        "display_name": "Nova Sonic 2.0",
+        "provider": "",
+        "service": "AmazonBedrock"
+      }
+    },
+    "PixtralLarge2502": {
+      "standard": {
+        "output": 6e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 2e-06
+      },
+      "_meta": {
+        "display_name": "Pixtral Large 25.02",
+        "provider": "Mistral",
+        "service": "AmazonBedrock"
+      }
+    },
+    "Qwen3-32B": {
+      "priority": {
+        "output": 1.05e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 2.625e-07
+      },
+      "_meta": {
+        "display_name": "Qwen3 32B",
+        "provider": "Qwen",
+        "service": "AmazonBedrock"
+      },
+      "standard": {
+        "output": 6e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 1.5e-07
+      },
+      "batch": {
+        "output": 3e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 7.5e-08
+      },
+      "flex": {
+        "output": 3e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 7.5e-08
+      }
+    },
+    "Qwen3-VL-235B-A22B": {
+      "flex": {
+        "output": 1.33e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 2.6e-07
+      },
+      "_meta": {
+        "display_name": "Qwen3 VL 235B A22B",
+        "provider": "Qwen",
+        "service": "AmazonBedrock"
+      },
+      "standard": {
+        "input": 5.3e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 2.66e-06
+      },
+      "batch": {
+        "input": 2.6e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.33e-06
+      },
+      "priority": {
+        "output": 4.66e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 9.300000000000001e-07
+      }
+    },
+    "Qwen3Coder-30B-A3B": {
+      "priority": {
+        "input": 2.625e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.05e-06
+      },
+      "_meta": {
+        "display_name": "Qwen3 Coder 30B A3B",
+        "provider": "Qwen",
+        "service": "AmazonBedrock"
+      },
+      "batch": {
+        "output": 3e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 7.5e-08
+      },
+      "standard": {
+        "input": 1.5e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 6e-07
+      },
+      "flex": {
+        "output": 3e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 7.5e-08
+      }
+    },
+    "Qwen3Next-80B-A3B": {
+      "flex": {
+        "input": 6.999999999999999e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 6e-07
+      },
+      "_meta": {
+        "display_name": "Qwen3 Next 80B A3B",
+        "provider": "Qwen",
+        "service": "AmazonBedrock"
+      },
+      "priority": {
+        "input": 2.6e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 2.1e-06
+      }
+    },
+    "TitanEmbeddingV2-Text": {
+      "batch": {
+        "input": 1e-08,
+        "_effective": "2026-07-01T00:00:00Z"
+      },
+      "_meta": {
+        "display_name": "TitanEmbeddingV2-Text",
+        "provider": "",
+        "service": "AmazonBedrock"
+      },
+      "standard": {
+        "input": 2e-08,
+        "_effective": "2026-07-01T00:00:00Z"
+      }
+    },
+    "TitanEmbeddingsG1-Image": {
+      "standard": {
+        "input": 8.000000000000001e-07,
+        "_effective": "2026-07-01T00:00:00Z"
+      },
+      "_meta": {
+        "display_name": "TitanEmbeddingsG1-Image",
+        "provider": "",
+        "service": "AmazonBedrock"
+      },
+      "batch": {
+        "input": 4.0000000000000003e-07,
+        "_effective": "2026-07-01T00:00:00Z"
+      }
+    },
+    "TitanEmbeddingsG1-Text": {
+      "standard": {
+        "input": 1.0000000000000001e-07,
+        "_effective": "2026-07-01T00:00:00Z"
+      },
+      "_meta": {
+        "display_name": "TitanEmbeddingsG1-Text",
+        "provider": "",
+        "service": "AmazonBedrock"
+      }
+    },
+    "TitanText-Premier": {
+      "standard": {
+        "output": 1.5e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 5e-07
+      },
+      "_meta": {
+        "display_name": "TitanText-Premier",
+        "provider": "",
+        "service": "AmazonBedrock"
+      }
+    },
+    "TitanTextG1-Express": {
+      "standard": {
+        "input": 2.0000000000000002e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 6e-07
+      },
+      "_meta": {
+        "display_name": "TitanTextG1-Express",
+        "provider": "",
+        "service": "AmazonBedrock"
+      }
+    },
+    "TitanTextG1-Lite": {
+      "standard": {
+        "input": 1.5e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 2.0000000000000002e-07
+      },
+      "_meta": {
+        "display_name": "TitanTextG1-Lite",
+        "provider": "",
+        "service": "AmazonBedrock"
+      }
+    },
+    "Voxtral-Mini-24B-2507": {
+      "batch": {
+        "output": 1.5e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 5.0000000000000004e-08
+      },
+      "_meta": {
+        "display_name": "Voxtral Small 1.0",
+        "provider": "Mistral",
+        "service": "AmazonBedrock"
+      },
+      "flex": {
+        "input": 5.0000000000000004e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.5e-07
+      },
+      "priority": {
+        "input": 1.7000000000000001e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 5.2e-07
+      },
+      "standard": {
+        "output": 3e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 1.0000000000000001e-07
+      }
+    },
+    "Voxtral-Mini-3B-2507": {
+      "batch": {
+        "input": 2e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 2e-08
+      },
+      "_meta": {
+        "display_name": "Voxtral Mini 1.0",
+        "provider": "Mistral",
+        "service": "AmazonBedrock"
+      },
+      "standard": {
+        "output": 4e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 4e-08
+      },
+      "flex": {
+        "output": 2e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 2e-08
+      },
+      "priority": {
+        "output": 6.999999999999999e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 6.999999999999999e-08
+      }
+    },
     "deepseek.v3.1": {
       "flex": {
         "input": 2.9e-07,
         "_effective": "2026-07-01T00:00:00Z",
         "output": 8.4e-07
+      },
+      "_meta": {
+        "display_name": "DeepSeek V3.1",
+        "provider": "DeepSeek",
+        "service": "AmazonBedrock"
       },
       "batch": {
         "output": 8.4e-07,
@@ -33,6 +1229,11 @@
         "_effective": "2026-07-01T00:00:00Z",
         "output": 3.2375e-06
       },
+      "_meta": {
+        "display_name": "DeepSeek v3.2",
+        "provider": "DeepSeek",
+        "service": "AmazonBedrock"
+      },
       "standard": {
         "input": 6.2e-07,
         "_effective": "2026-07-01T00:00:00Z",
@@ -54,6 +1255,11 @@
         "output": 2.9e-07,
         "_effective": "2026-07-01T00:00:00Z",
         "input": 9.000000000000001e-08
+      },
+      "_meta": {
+        "display_name": "Gemma 3 12B",
+        "provider": "Google",
+        "service": "AmazonBedrock"
       },
       "batch": {
         "output": 1.5e-07,
@@ -77,6 +1283,11 @@
         "_effective": "2026-07-01T00:00:00Z",
         "input": 4.0000000000000003e-07
       },
+      "_meta": {
+        "display_name": "Gemma 3 27B",
+        "provider": "Google",
+        "service": "AmazonBedrock"
+      },
       "flex": {
         "input": 1.2000000000000002e-07,
         "_effective": "2026-07-01T00:00:00Z",
@@ -98,6 +1309,11 @@
         "input": 2e-08,
         "_effective": "2026-07-01T00:00:00Z",
         "output": 4e-08
+      },
+      "_meta": {
+        "display_name": "Gemma 3 4B",
+        "provider": "Google",
+        "service": "AmazonBedrock"
       },
       "flex": {
         "output": 4e-08,
@@ -121,6 +1337,11 @@
         "_effective": "2026-07-01T00:00:00Z",
         "input": 2.275e-07
       },
+      "_meta": {
+        "display_name": "google.gemma-4-26b-a4b",
+        "provider": "Google",
+        "service": "AmazonBedrock"
+      },
       "batch": {
         "output": 2.0000000000000002e-07,
         "_effective": "2026-07-01T00:00:00Z",
@@ -142,6 +1363,11 @@
         "input": 1.3999999999999998e-07,
         "_effective": "2026-07-01T00:00:00Z",
         "output": 4.0000000000000003e-07
+      },
+      "_meta": {
+        "display_name": "google.gemma-4-31b",
+        "provider": "Google",
+        "service": "AmazonBedrock"
       },
       "flex": {
         "input": 6.999999999999999e-08,
@@ -165,6 +1391,11 @@
         "_effective": "2026-07-01T00:00:00Z",
         "output": 4e-08
       },
+      "_meta": {
+        "display_name": "google.gemma-4-e2b",
+        "provider": "Google",
+        "service": "AmazonBedrock"
+      },
       "flex": {
         "input": 2e-08,
         "_effective": "2026-07-01T00:00:00Z",
@@ -181,11 +1412,70 @@
         "input": 6.999999999999999e-08
       }
     },
+    "gpt-oss-120b": {
+      "standard": {
+        "input": 1.5e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 6e-07
+      },
+      "_meta": {
+        "display_name": "gpt-oss-120b",
+        "provider": "OpenAI",
+        "service": "AmazonBedrock"
+      },
+      "flex": {
+        "input": 7.5e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 3e-07
+      },
+      "batch": {
+        "input": 7.5e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 3e-07
+      },
+      "priority": {
+        "input": 2.625e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.05e-06
+      }
+    },
+    "gpt-oss-20b": {
+      "flex": {
+        "output": 1.5e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 3.4999999999999996e-08
+      },
+      "_meta": {
+        "display_name": "gpt-oss-20b",
+        "provider": "OpenAI",
+        "service": "AmazonBedrock"
+      },
+      "priority": {
+        "input": 1.225e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 5.25e-07
+      },
+      "standard": {
+        "input": 6.999999999999999e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 3e-07
+      },
+      "batch": {
+        "output": 1.5e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 3.4999999999999996e-08
+      }
+    },
     "minimax.minimax-m2": {
       "standard": {
         "output": 1.2e-06,
         "_effective": "2026-07-01T00:00:00Z",
         "input": 3e-07
+      },
+      "_meta": {
+        "display_name": "Minimax M2",
+        "provider": "Minimax AI",
+        "service": "AmazonBedrock"
       },
       "priority": {
         "input": 5.2e-07,
@@ -209,27 +1499,10 @@
         "_effective": "2026-07-01T00:00:00Z",
         "input": 5.25e-07
       },
-      "flex": {
-        "output": 6e-07,
-        "_effective": "2026-07-01T00:00:00Z",
-        "input": 1.5e-07
-      },
-      "standard": {
-        "input": 3e-07,
-        "_effective": "2026-07-01T00:00:00Z",
-        "output": 1.2e-06
-      },
-      "batch": {
-        "input": 1.5e-07,
-        "_effective": "2026-07-01T00:00:00Z",
-        "output": 6e-07
-      }
-    },
-    "minimax.minimax-m2.5": {
-      "priority": {
-        "input": 5.25e-07,
-        "_effective": "2026-07-01T00:00:00Z",
-        "output": 2.1e-06
+      "_meta": {
+        "display_name": "Minimax M2.1",
+        "provider": "Minimax AI",
+        "service": "AmazonBedrock"
       },
       "batch": {
         "output": 6e-07,
@@ -242,9 +1515,36 @@
         "input": 3e-07
       },
       "flex": {
+        "output": 6e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 1.5e-07
+      }
+    },
+    "minimax.minimax-m2.5": {
+      "priority": {
+        "input": 5.25e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 2.1e-06
+      },
+      "_meta": {
+        "display_name": "MiniMax M2.5",
+        "provider": "Minimax AI",
+        "service": "AmazonBedrock"
+      },
+      "batch": {
+        "output": 6e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 1.5e-07
+      },
+      "flex": {
         "input": 1.5e-07,
         "_effective": "2026-07-01T00:00:00Z",
         "output": 6e-07
+      },
+      "standard": {
+        "output": 1.2e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 3e-07
       }
     },
     "mistral.devstral-2-123b": {
@@ -252,6 +1552,11 @@
         "input": 2.0000000000000002e-07,
         "_effective": "2026-07-01T00:00:00Z",
         "output": 1e-06
+      },
+      "_meta": {
+        "display_name": "Devstral",
+        "provider": "Mistral AI",
+        "service": "AmazonBedrock"
       },
       "batch": {
         "output": 1e-06,
@@ -275,6 +1580,11 @@
         "_effective": "2026-07-01T00:00:00Z",
         "output": 2.63e-06
       },
+      "_meta": {
+        "display_name": "Magistral Small 1.2",
+        "provider": "Mistral",
+        "service": "AmazonBedrock"
+      },
       "standard": {
         "input": 5e-07,
         "_effective": "2026-07-01T00:00:00Z",
@@ -296,6 +1606,11 @@
         "output": 1.0000000000000001e-07,
         "_effective": "2026-07-01T00:00:00Z",
         "input": 1.0000000000000001e-07
+      },
+      "_meta": {
+        "display_name": "Ministral 14B 3.0",
+        "provider": "Mistral",
+        "service": "AmazonBedrock"
       },
       "standard": {
         "input": 2.0000000000000002e-07,
@@ -319,6 +1634,11 @@
         "_effective": "2026-07-01T00:00:00Z",
         "input": 1.7000000000000001e-07
       },
+      "_meta": {
+        "display_name": "Ministral 3B 3.0",
+        "provider": "Mistral",
+        "service": "AmazonBedrock"
+      },
       "flex": {
         "output": 5.0000000000000004e-08,
         "_effective": "2026-07-01T00:00:00Z",
@@ -340,6 +1660,11 @@
         "output": 6.999999999999999e-08,
         "_effective": "2026-07-01T00:00:00Z",
         "input": 6.999999999999999e-08
+      },
+      "_meta": {
+        "display_name": "Ministral 8B 3.0",
+        "provider": "Mistral",
+        "service": "AmazonBedrock"
       },
       "standard": {
         "output": 1.5e-07,
@@ -363,6 +1688,11 @@
         "_effective": "2026-07-01T00:00:00Z",
         "output": 1.5e-06
       },
+      "_meta": {
+        "display_name": "Mistral Large 3",
+        "provider": "Mistral",
+        "service": "AmazonBedrock"
+      },
       "flex": {
         "output": 7.5e-07,
         "_effective": "2026-07-01T00:00:00Z",
@@ -384,6 +1714,11 @@
         "output": 6.999999999999999e-08,
         "_effective": "2026-07-01T00:00:00Z",
         "input": 6.999999999999999e-08
+      },
+      "_meta": {
+        "display_name": "Voxtral Mini 1.0",
+        "provider": "Mistral",
+        "service": "AmazonBedrock"
       },
       "flex": {
         "input": 2e-08,
@@ -407,6 +1742,11 @@
         "_effective": "2026-07-01T00:00:00Z",
         "output": 3e-07
       },
+      "_meta": {
+        "display_name": "Voxtral Small 1.0",
+        "provider": "Mistral",
+        "service": "AmazonBedrock"
+      },
       "flex": {
         "input": 5.0000000000000004e-08,
         "_effective": "2026-07-01T00:00:00Z",
@@ -428,6 +1768,11 @@
         "output": 1.25e-06,
         "_effective": "2026-07-01T00:00:00Z",
         "input": 3e-07
+      },
+      "_meta": {
+        "display_name": "Kimi K2 Thinking",
+        "provider": "Moonshot AI",
+        "service": "AmazonBedrock"
       },
       "priority": {
         "input": 1.05e-06,
@@ -451,17 +1796,22 @@
         "_effective": "2026-07-01T00:00:00Z",
         "input": 6e-07
       },
-      "batch": {
-        "input": 3e-07,
+      "_meta": {
+        "display_name": "Kimi K2.5",
+        "provider": "Moonshot AI",
+        "service": "AmazonBedrock"
+      },
+      "flex": {
+        "output": 1.5e-06,
         "_effective": "2026-07-01T00:00:00Z",
-        "output": 1.5e-06
+        "input": 3e-07
       },
       "priority": {
         "input": 1.05e-06,
         "_effective": "2026-07-01T00:00:00Z",
         "output": 5.2500000000000006e-06
       },
-      "flex": {
+      "batch": {
         "output": 1.5e-06,
         "_effective": "2026-07-01T00:00:00Z",
         "input": 3e-07
@@ -472,6 +1822,11 @@
         "output": 1.05e-06,
         "_effective": "2026-07-01T00:00:00Z",
         "input": 3.5e-07
+      },
+      "_meta": {
+        "display_name": "NVIDIA Nemotron Nano 2 VL",
+        "provider": "Nvidia",
+        "service": "AmazonBedrock"
       },
       "batch": {
         "output": 3e-07,
@@ -495,6 +1850,11 @@
         "_effective": "2026-07-01T00:00:00Z",
         "input": 3.0000000000000004e-08
       },
+      "_meta": {
+        "display_name": "Nemotron Nano 3 30B",
+        "provider": "Nvidia",
+        "service": "AmazonBedrock"
+      },
       "flex": {
         "input": 3.0000000000000004e-08,
         "_effective": "2026-07-01T00:00:00Z",
@@ -517,6 +1877,11 @@
         "_effective": "2026-07-01T00:00:00Z",
         "input": 1.1e-07
       },
+      "_meta": {
+        "display_name": "NVIDIA Nemotron Nano 2",
+        "provider": "Nvidia",
+        "service": "AmazonBedrock"
+      },
       "batch": {
         "output": 1.2000000000000002e-07,
         "_effective": "2026-07-01T00:00:00Z",
@@ -534,25 +1899,30 @@
       }
     },
     "nvidia.nemotron-super-3-120b": {
+      "priority": {
+        "input": 2.625e-07,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 1.1375000000000001e-06
+      },
+      "_meta": {
+        "display_name": "NVIDIA Nemotron 3 Super 120B A12B",
+        "provider": "Nvidia",
+        "service": "AmazonBedrock"
+      },
       "standard": {
         "output": 6.499999999999999e-07,
         "_effective": "2026-07-01T00:00:00Z",
         "input": 1.5e-07
       },
-      "batch": {
-        "output": 3.2499999999999996e-07,
-        "_effective": "2026-07-01T00:00:00Z",
-        "input": 7.5e-08
-      },
-      "priority": {
-        "output": 1.1375000000000001e-06,
-        "_effective": "2026-07-01T00:00:00Z",
-        "input": 2.625e-07
-      },
       "flex": {
         "output": 3.2499999999999996e-07,
         "_effective": "2026-07-01T00:00:00Z",
         "input": 7.5e-08
+      },
+      "batch": {
+        "input": 7.5e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 3.2499999999999996e-07
       }
     },
     "openai.gpt-oss-120b": {
@@ -560,6 +1930,11 @@
         "input": 2.625e-07,
         "_effective": "2026-07-01T00:00:00Z",
         "output": 1.05e-06
+      },
+      "_meta": {
+        "display_name": "gpt-oss-120b",
+        "provider": "OpenAI",
+        "service": "AmazonBedrock"
       },
       "batch": {
         "output": 3e-07,
@@ -583,6 +1958,11 @@
         "_effective": "2026-07-01T00:00:00Z",
         "input": 6.999999999999999e-08
       },
+      "_meta": {
+        "display_name": "gpt-oss-20b",
+        "provider": "OpenAI",
+        "service": "AmazonBedrock"
+      },
       "flex": {
         "input": 3.4999999999999996e-08,
         "_effective": "2026-07-01T00:00:00Z",
@@ -604,6 +1984,11 @@
         "input": 1.5e-07,
         "_effective": "2026-07-01T00:00:00Z",
         "output": 6e-07
+      },
+      "_meta": {
+        "display_name": "GPT OSS Safeguard 120B",
+        "provider": "OpenAI",
+        "service": "AmazonBedrock"
       },
       "flex": {
         "input": 6.999999999999999e-08,
@@ -627,6 +2012,11 @@
         "_effective": "2026-07-01T00:00:00Z",
         "output": 1.0000000000000001e-07
       },
+      "_meta": {
+        "display_name": "GPT OSS Safeguard 20B",
+        "provider": "OpenAI",
+        "service": "AmazonBedrock"
+      },
       "batch": {
         "output": 1.0000000000000001e-07,
         "_effective": "2026-07-01T00:00:00Z",
@@ -648,6 +2038,11 @@
         "input": 1.1e-07,
         "_effective": "2026-07-01T00:00:00Z",
         "output": 4.4e-07
+      },
+      "_meta": {
+        "display_name": "Qwen3 235B A22B 2507",
+        "provider": "Qwen",
+        "service": "AmazonBedrock"
       },
       "priority": {
         "output": 1.5399999999999999e-06,
@@ -671,6 +2066,11 @@
         "_effective": "2026-07-01T00:00:00Z",
         "input": 2.625e-07
       },
+      "_meta": {
+        "display_name": "Qwen3 32B",
+        "provider": "Qwen",
+        "service": "AmazonBedrock"
+      },
       "batch": {
         "input": 7.5e-08,
         "_effective": "2026-07-01T00:00:00Z",
@@ -692,6 +2092,11 @@
         "output": 3e-07,
         "_effective": "2026-07-01T00:00:00Z",
         "input": 7.5e-08
+      },
+      "_meta": {
+        "display_name": "Qwen3 Coder 30B A3B",
+        "provider": "Qwen",
+        "service": "AmazonBedrock"
       },
       "standard": {
         "input": 1.5e-07,
@@ -715,6 +2120,11 @@
         "_effective": "2026-07-01T00:00:00Z",
         "output": 1.8e-06
       },
+      "_meta": {
+        "display_name": "Qwen3 Coder 480B A35B",
+        "provider": "Qwen",
+        "service": "AmazonBedrock"
+      },
       "batch": {
         "input": 2.25e-07,
         "_effective": "2026-07-01T00:00:00Z",
@@ -737,15 +2147,20 @@
         "_effective": "2026-07-01T00:00:00Z",
         "input": 2.5e-07
       },
+      "_meta": {
+        "display_name": "Qwen3 Coder Next",
+        "provider": "Qwen",
+        "service": "AmazonBedrock"
+      },
+      "priority": {
+        "output": 2.1e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 8.75e-07
+      },
       "batch": {
         "output": 6e-07,
         "_effective": "2026-07-01T00:00:00Z",
         "input": 2.5e-07
-      },
-      "priority": {
-        "input": 8.75e-07,
-        "_effective": "2026-07-01T00:00:00Z",
-        "output": 2.1e-06
       },
       "standard": {
         "input": 5e-07,
@@ -758,6 +2173,11 @@
         "input": 2.6e-07,
         "_effective": "2026-07-01T00:00:00Z",
         "output": 2.1e-06
+      },
+      "_meta": {
+        "display_name": "Qwen3 Next 80B A3B",
+        "provider": "Qwen",
+        "service": "AmazonBedrock"
       },
       "standard": {
         "output": 1.2e-06,
@@ -781,6 +2201,11 @@
         "_effective": "2026-07-01T00:00:00Z",
         "input": 9.300000000000001e-07
       },
+      "_meta": {
+        "display_name": "Qwen3 VL 235B A22B",
+        "provider": "Qwen",
+        "service": "AmazonBedrock"
+      },
       "standard": {
         "input": 5.3e-07,
         "_effective": "2026-07-01T00:00:00Z",
@@ -798,10 +2223,20 @@
       }
     },
     "writer.palmyra-vision-7b": {
-      "flex": {
-        "output": 3e-07,
+      "priority": {
+        "input": 2.625e-07,
         "_effective": "2026-07-01T00:00:00Z",
-        "input": 7.5e-08
+        "output": 1.05e-06
+      },
+      "_meta": {
+        "display_name": "Writer Palmyra Vision 7B",
+        "provider": "Writer",
+        "service": "AmazonBedrock"
+      },
+      "flex": {
+        "input": 7.5e-08,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 3e-07
       },
       "standard": {
         "input": 1.5e-07,
@@ -809,14 +2244,9 @@
         "output": 6e-07
       },
       "batch": {
-        "output": 3e-07,
+        "input": 7.5e-08,
         "_effective": "2026-07-01T00:00:00Z",
-        "input": 7.5e-08
-      },
-      "priority": {
-        "input": 2.625e-07,
-        "_effective": "2026-07-01T00:00:00Z",
-        "output": 1.05e-06
+        "output": 3e-07
       }
     },
     "xai.grok-4.3": {
@@ -825,6 +2255,11 @@
         "_effective": "2026-07-01T00:00:00Z",
         "input": 0.000625,
         "cache-read": 0.0001
+      },
+      "_meta": {
+        "display_name": "xai.grok-4.3",
+        "provider": "",
+        "service": "AmazonBedrock"
       },
       "priority": {
         "cache-read": 0.00035,
@@ -846,25 +2281,30 @@
       }
     },
     "zai.glm-4.7": {
+      "standard": {
+        "output": 2.2e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "input": 6e-07
+      },
+      "_meta": {
+        "display_name": "GLM 4.7",
+        "provider": "Z AI",
+        "service": "AmazonBedrock"
+      },
       "priority": {
         "output": 3.85e-06,
         "_effective": "2026-07-01T00:00:00Z",
         "input": 1.05e-06
       },
       "flex": {
-        "output": 1.1e-06,
+        "input": 3e-07,
         "_effective": "2026-07-01T00:00:00Z",
-        "input": 3e-07
+        "output": 1.1e-06
       },
       "batch": {
         "output": 1.1e-06,
         "_effective": "2026-07-01T00:00:00Z",
         "input": 3e-07
-      },
-      "standard": {
-        "input": 6e-07,
-        "_effective": "2026-07-01T00:00:00Z",
-        "output": 2.2e-06
       }
     },
     "zai.glm-4.7-flash": {
@@ -873,23 +2313,38 @@
         "_effective": "2026-07-01T00:00:00Z",
         "input": 1.225e-07
       },
-      "flex": {
-        "input": 3.4999999999999996e-08,
+      "_meta": {
+        "display_name": "GLM 4.7 Flash",
+        "provider": "Z AI",
+        "service": "AmazonBedrock"
+      },
+      "standard": {
+        "input": 6.999999999999999e-08,
         "_effective": "2026-07-01T00:00:00Z",
-        "output": 2.0000000000000002e-07
+        "output": 4.0000000000000003e-07
       },
       "batch": {
         "input": 3.4999999999999996e-08,
         "_effective": "2026-07-01T00:00:00Z",
         "output": 2.0000000000000002e-07
       },
-      "standard": {
-        "input": 6.999999999999999e-08,
+      "flex": {
+        "input": 3.4999999999999996e-08,
         "_effective": "2026-07-01T00:00:00Z",
-        "output": 4.0000000000000003e-07
+        "output": 2.0000000000000002e-07
       }
     },
     "zai.glm5": {
+      "standard": {
+        "input": 1e-06,
+        "_effective": "2026-07-01T00:00:00Z",
+        "output": 3.2000000000000003e-06
+      },
+      "_meta": {
+        "display_name": "GLM 5",
+        "provider": "Z AI",
+        "service": "AmazonBedrock"
+      },
       "priority": {
         "input": 1.75e-06,
         "_effective": "2026-07-01T00:00:00Z",
@@ -899,11 +2354,6 @@
         "output": 1.6000000000000001e-06,
         "_effective": "2026-07-01T00:00:00Z",
         "input": 5e-07
-      },
-      "standard": {
-        "output": 3.2000000000000003e-06,
-        "_effective": "2026-07-01T00:00:00Z",
-        "input": 1e-06
       },
       "batch": {
         "output": 1.6000000000000001e-06,

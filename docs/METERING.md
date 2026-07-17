@@ -112,10 +112,26 @@ per-model mantle usage types (unit = 1K tokens) at D-2 and publishes
 `Metering/ReconciliationDriftPct`; **the measured 30-day drift is the accuracy
 claim** — no number is promised up front. Notes:
 
-- **Unpriced models** (today: Anthropic Claude and GPT-5.x have no mantle SKUs
-  in the offer file): usage is recorded in tokens, priced at $0, and the
-  `UnpricedModel` alarm fires. Add operator rates under `"overrides"` in
-  `config/model-prices.json` to bring them under dollar quotas. Settled ledger
+- **Model pricing catalog** (console **Model pricing** page + `GET /pricing`):
+  the authoritative, self-updating price source. A scheduled refresher
+  (`…-pricing-refresher`, daily + on-demand via "Refresh from AWS") parses the
+  **AWS Price List Bulk API** — all Bedrock offer files (`AmazonBedrock` +
+  `AmazonBedrockService`) and all on-demand token usage-type shapes (mantle,
+  classic, cross-region) — into `PRICING#<model>/PUBLISHED` rows. Operators set
+  per-model **overrides** (`PRICING#<model>/OVERRIDE`, audited) in the console.
+  The debit Lambda resolves each rate **override → AWS-published → bundled
+  `config/model-prices.json` → unpriced**, cached 5 min. So published prices
+  refresh with no redeploy, overrides survive refreshes, and each settled row
+  records its `price_source`. Full root-cause + design:
+  [`docs/plans/metering-admin-console/02-PRICING-INVESTIGATION.md`](plans/metering-admin-console/02-PRICING-INVESTIGATION.md).
+- **Unpriced models** (e.g. pre-GA frontier ids like `anthropic.claude-sonnet-5`,
+  `openai.gpt-5.x` that AWS hasn't published a SKU for yet): usage is recorded
+  in tokens, priced at $0, and the `UnpricedModel` alarm fires. Set an operator
+  override in the console's Model pricing page (or add a rate under
+  `"overrides"` in `config/model-prices.json`) to bring them under dollar
+  quotas — never a silent guess. (The generator now prices ~106 models
+  including all published Claude/Llama/Gemma/DeepSeek/GPT-OSS; only genuinely
+  unpublished versions remain unpriced.) Settled ledger
   rows for unpriced models carry `unpriced: true` plus `usd_estimate` (the
   interceptor's admission-estimate dollars) so the console shows
   "~$X est." rather than a bare `$0` — a call that cost money reads as

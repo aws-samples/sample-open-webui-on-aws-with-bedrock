@@ -66,6 +66,7 @@ ALERTS_TOPIC_ARN = os.environ.get("ALERTS_TOPIC_ARN", "")
 ALARM_PREFIX = os.environ.get("ALARM_PREFIX", "open-webui-metering")
 ENFORCE_MODE = os.environ.get("ENFORCE_MODE", "")
 PRICE_MAP_VERSION = os.environ.get("PRICE_MAP_VERSION", "")
+PRICING_REFRESHER_FN = os.environ.get("PRICING_REFRESHER_FN", "")
 HARD_DEFAULT_USD = float(os.environ.get("HARD_DEFAULT_USD", "5"))
 SOFT_DEFAULT_USD = float(os.environ.get("SOFT_DEFAULT_USD", "4"))
 RPM_DEFAULT = int(os.environ.get("RPM_LIMIT_DEFAULT", "30"))
@@ -719,6 +720,134 @@ def _unsubscribe_alerts(arn: str, actor: str) -> dict:
     return {"unsubscribed": arn}
 
 
+# ── pricing catalog (docs/plans/metering-admin-console/02-PRICING-INVESTIGATION.md) ──
+# PRICING#<model>/PUBLISHED  (written by the refresher from the AWS Price List)
+# PRICING#<model>/OVERRIDE   (operator-entered here; wins over PUBLISHED)
+# PRICING#_CATALOG/META      (refresher marker: version, count, refreshed_at)
+
+_MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:\-]{0,127}$")
+
+
+def _pricing_rows() -> list:
+    """All PRICING# rows via the estimates GSI would miss them (no state attr);
+    query the pk space directly with a Scan bounded to PRICING# — the catalog is
+    ~100-200 rows, not the ledger, so this is cheap and paginated defensively."""
+    items, lek = [], None
+    while True:
+        kwargs = {
+            "TableName": TABLE,
+            "FilterExpression": "begins_with(pk, :p)",
+            "ExpressionAttributeValues": {":p": {"S": "PRICING#"}},
+        }
+        if lek:
+            kwargs["ExclusiveStartKey"] = lek
+        page = ddb.scan(**kwargs)
+        items.extend(page.get("Items", []))
+        lek = page.get("LastEvaluatedKey")
+        if not lek or len(items) > 5000:
+            break
+    return items
+
+
+def _catalog() -> dict:
+    """Assemble the pricing catalog: per-model published + override + effective."""
+    rows = _pricing_rows()
+    models: dict = {}
+    meta = {}
+    for it in rows:
+        p = _plain(it)
+        pk = p.get("pk", "")
+        model = pk.removeprefix("PRICING#")
+        sk = p.get("sk", "")
+        if model == "_CATALOG":
+            meta = {k: v for k, v in p.items() if k not in ("pk", "sk")}
+            continue
+        entry = models.setdefault(model, {"model": model})
+        for junk in ("pk", "sk"):
+            p.pop(junk, None)
+        if sk == "PUBLISHED":
+            entry["published"] = p
+        elif sk == "OVERRIDE":
+            entry["override"] = p
+    # compute the effective rate + source for each model
+    out = []
+    for model, e in sorted(models.items()):
+        ov, pub = e.get("override"), e.get("published")
+        if ov and (ov.get("input") is not None or ov.get("output") is not None):
+            eff = {"input": ov.get("input"), "output": ov.get("output"), "source": "override"}
+        elif pub:
+            eff = {"input": pub.get("input"), "output": pub.get("output"), "source": "aws-published"}
+        else:
+            eff = {"input": None, "output": None, "source": "unpriced"}
+        out.append({
+            "model": model,
+            "display_name": (pub or {}).get("display_name") or (ov or {}).get("display_name") or model,
+            "provider": (pub or {}).get("provider", ""),
+            "effective": eff,
+            "published": pub,
+            "override": ov,
+        })
+    return {"models": out, "meta": meta, "count": len(out)}
+
+
+def _put_price_override(model: str, body: dict, actor: str) -> dict:
+    if not _MODEL_RE.match(model):
+        raise ValueError("invalid model id")
+    inp = body.get("input")
+    out = body.get("output")
+    if inp is None and out is None:
+        raise ValueError("at least one of input/output (USD per token) required")
+    for v in (inp, out):
+        if v is not None and (float(v) < 0 or float(v) > 1):
+            raise ValueError("per-token rate must be between 0 and 1 USD")
+    before = _plain(ddb.get_item(
+        TableName=TABLE, Key={"pk": {"S": f"PRICING#{model}"}, "sk": {"S": "OVERRIDE"}}, ConsistentRead=True,
+    ).get("Item"))
+    now = int(time.time())
+    item = {
+        "pk": {"S": f"PRICING#{model}"},
+        "sk": {"S": "OVERRIDE"},
+        "model": {"S": model},
+        "source": {"S": "override"},
+        "updated_by": {"S": actor},
+        "updated_at": {"N": str(now)},
+    }
+    if inp is not None:
+        item["input"] = {"N": str(float(inp))}
+    if out is not None:
+        item["output"] = {"N": str(float(out))}
+    if body.get("note"):
+        item["note"] = {"S": str(body["note"])[:500]}
+    ddb.put_item(TableName=TABLE, Item=item)
+    after = _plain(ddb.get_item(
+        TableName=TABLE, Key={"pk": {"S": f"PRICING#{model}"}, "sk": {"S": "OVERRIDE"}}, ConsistentRead=True,
+    ).get("Item"))
+    _audit(actor, "PUT_PRICE_OVERRIDE", model, before, after)
+    return after
+
+
+def _delete_price_override(model: str, actor: str) -> dict:
+    before = _plain(ddb.get_item(
+        TableName=TABLE, Key={"pk": {"S": f"PRICING#{model}"}, "sk": {"S": "OVERRIDE"}}, ConsistentRead=True,
+    ).get("Item"))
+    if not before:
+        return {"deleted": False, "reason": "no override for this model"}
+    ddb.delete_item(TableName=TABLE, Key={"pk": {"S": f"PRICING#{model}"}, "sk": {"S": "OVERRIDE"}})
+    _audit(actor, "DELETE_PRICE_OVERRIDE", model, before, {})
+    return {"deleted": True, "model": model, "note": "model reverts to AWS-published rate (or unpriced)"}
+
+
+def _refresh_pricing(actor: str) -> dict:
+    """Trigger the pricing refresher Lambda synchronously (bounded work: ~2 offer
+    files). Returns its result so the console shows the new model count."""
+    if not PRICING_REFRESHER_FN:
+        return {"error": "pricing refresher not configured"}
+    resp = _client("lambda").invoke(FunctionName=PRICING_REFRESHER_FN, InvocationType="RequestResponse")
+    payload = json.loads(resp["Payload"].read() or "{}")
+    _audit(actor, "REFRESH_PRICING", "catalog", {}, payload if isinstance(payload, dict) else {})
+    return payload
+
+
 # ── handler ─────────────────────────────────────────────────────────────────
 
 def handler(event, context):
@@ -812,6 +941,9 @@ def handler(event, context):
     if route == "GET /alert-subscriptions":
         return _resp(200, _alert_subscriptions())
 
+    if route == "GET /pricing":
+        return _resp(200, _cached("pricing", _catalog))
+
     # ── admin mutations (audited; self-target rejected) ──
     if route == "PUT /policy/{scope}":
         scope = path_params.get("scope", "")
@@ -883,5 +1015,18 @@ def handler(event, context):
             return _resp(400, {"error": "arn query param required"})
         out = _unsubscribe_alerts(arn, actor)
         return _resp(400 if "error" in out else 200, out)
+
+    if route == "PUT /pricing/{model}":
+        try:
+            return _resp(200, _put_price_override(path_params.get("model", ""), body, actor))
+        except (ValueError, TypeError) as e:
+            return _resp(400, {"error": str(e)})
+
+    if route == "DELETE /pricing/{model}":
+        return _resp(200, _delete_price_override(path_params.get("model", ""), actor))
+
+    if route == "POST /pricing/refresh":
+        out = _refresh_pricing(actor)
+        return _resp(400 if isinstance(out, dict) and "error" in out else 200, out)
 
     return _resp(404, {"error": f"unknown route {route}"})

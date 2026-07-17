@@ -71,23 +71,87 @@ ddb = boto3.client("dynamodb")
 sns = boto3.client("sns") if SNS_TOPIC else None
 cw = boto3.client("cloudwatch")
 
+# ── Live pricing catalog (DynamoDB) ──────────────────────────────────────────
+# Rate precedence (docs/plans/metering-admin-console/02-PRICING-INVESTIGATION.md):
+#   operator OVERRIDE row → AWS-PUBLISHED row (refreshed daily, no redeploy) →
+#   bundled model-prices.json (deploy-time snapshot) → unpriced.
+# Catalog rows are cached per-container so the hot settle path stays cheap; the
+# published tier is refreshed daily so a 5-min TTL is plenty fresh.
+_CATALOG_TTL = int(os.environ.get("PRICING_CACHE_TTL", "300"))
+_catalog_cache: dict = {}  # model -> (fetched_ts, {"override": {...}|None, "published": {...}|None})
+
+
+def _catalog_entry(model: str) -> dict:
+    hit = _catalog_cache.get(model)
+    if hit and time.time() - hit[0] < _CATALOG_TTL:
+        return hit[1]
+    entry = {"override": None, "published": None}
+    try:
+        resp = ddb.batch_get_item(
+            RequestItems={
+                TABLE: {
+                    "Keys": [
+                        {"pk": {"S": f"PRICING#{model}"}, "sk": {"S": "OVERRIDE"}},
+                        {"pk": {"S": f"PRICING#{model}"}, "sk": {"S": "PUBLISHED"}},
+                    ]
+                }
+            }
+        )
+        for it in resp.get("Responses", {}).get(TABLE, []):
+            sk = it.get("sk", {}).get("S", "")
+            if sk == "OVERRIDE":
+                entry["override"] = it
+            elif sk == "PUBLISHED":
+                entry["published"] = it
+    except Exception as e:  # noqa: BLE001 — catalog read must never break settlement
+        log.warning(f"pricing catalog read failed for {model}: {e}")
+    _catalog_cache[model] = (time.time(), entry)
+    return entry
+
+
+def _rate_from_row(row: dict, direction: str, tier: str):
+    """Pull a per-token rate from a PRICING# row (override or published).
+    Override rows carry flat input/output; published rows also carry a tiers map."""
+    if not row:
+        return None
+    # tier-specific rate from the tiers JSON (published rows), else flat input/output
+    tiers_raw = row.get("tiers", {}).get("S")
+    if tiers_raw:
+        try:
+            tiers = json.loads(tiers_raw)
+            v = (tiers.get(tier) or tiers.get("standard") or {}).get(direction)
+            if v is not None:
+                return float(v)
+        except (ValueError, TypeError):
+            pass
+    v = row.get(direction, {}).get("N")
+    return float(v) if v is not None else None
+
 
 def _month_window(ts: int) -> str:
     return datetime.datetime.fromtimestamp(ts, datetime.timezone.utc).strftime("%Y-%m")
 
 
 def _rate(model: str, direction: str, tier: str = "standard"):
-    """Return $/token for (model, direction, tier), or None when unpriced.
+    """Return ($/token, source) for (model, direction, tier), or (None, "unpriced").
 
-    Unpriced models are a blocking onboarding state (design M3): the debit
-    still records TOKENS (the invariant), prices at 0, and emits an
+    Precedence: operator override → AWS-published catalog → bundled file → unpriced.
+    Unpriced models still record TOKENS (the invariant), price at 0, and emit an
     UnpricedModel metric so operators enter a rate rather than us guessing.
     """
+    cat = _catalog_entry(model)
+    v = _rate_from_row(cat.get("override"), direction, tier)
+    if v is not None:
+        return v, "override"
+    v = _rate_from_row(cat.get("published"), direction, tier)
+    if v is not None:
+        return v, "aws-published"
     entry = (PRICE_MAP.get("models") or {}).get(model)
-    if not entry:
-        return None
-    v = (entry.get(tier) or entry.get("standard") or {}).get(direction)
-    return float(v) if v is not None else None
+    if entry:
+        v = (entry.get(tier) or entry.get("standard") or {}).get(direction)
+        if v is not None:
+            return float(v), "bundled"
+    return None, "unpriced"
 
 
 def _idempotency_key(d: dict) -> str:
@@ -129,9 +193,12 @@ def _settle(detail: dict):
     tout = int(detail.get("output_tokens", 0))
     tcached = int(detail.get("cached_tokens", 0))
 
-    rin, rout = _rate(model, "input", tier), _rate(model, "output", tier)
+    rin, rin_src = _rate(model, "input", tier)
+    rout, rout_src = _rate(model, "output", tier)
     unpriced = rin is None or rout is None
     usd = 0.0 if unpriced else round(tin * rin + tout * rout, 8)
+    # pricing source drives the ledger's price_source (override|aws-published|bundled|unpriced)
+    price_source = "unpriced" if unpriced else (rin_src if rin_src == rout_src else rin_src or rout_src)
     if unpriced:
         _metric("UnpricedModel", dims={"Model": model[:64]})
 
@@ -206,6 +273,7 @@ def _settle(detail: dict):
         "rate_in": {"N": str(rin or 0)},
         "rate_out": {"N": str(rout or 0)},
         "price_map_version": {"S": PRICE_MAP_VERSION},
+        "price_source": {"S": price_source},
         "usd": {"N": str(usd)},
         "unpriced": {"BOOL": bool(unpriced)},
         "state": {"S": "SETTLED"},
