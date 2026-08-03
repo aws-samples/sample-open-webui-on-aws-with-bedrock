@@ -214,7 +214,25 @@ def handler(event, context):
     )
     _log("MODEL_CAPS updated on interceptor ($LATEST)")
 
-    # 4b. If the gateway invokes via an alias→published-version (metering module),
+    # 5. Re-snapshot the connector so newly-listed models actually route.
+    # This runs BEFORE the alias promote and never early-returns: the two steps
+    # heal independent layers (connector routing vs. served listing), and a
+    # promote failure must not leave a new model listed-but-404ing. (Observed
+    # live: six consecutive runs died at the promote on a stale IAM role and
+    # skipped this step, so anthropic.claude-opus-5 listed but 404'd.)
+    resnapshot_failed = False
+    try:
+        _resnapshot_connector()
+    except Exception as e:  # noqa: BLE001
+        resnapshot_failed = True
+        _notify(
+            "model-refresher: connector re-snapshot FAILED",
+            f"Region {REGION}. The connector re-snapshot failed — new models may "
+            f"list yet 404 on selection until the connector target is refreshed."
+            f"\n\nError: {e}\n\nDiff:\n{diff}",
+        )
+
+    # 6. If the gateway invokes via an alias→published-version (metering module),
     # $LATEST is not what serves traffic — publish a new version and move the
     # alias, or the refresh silently never takes effect.
     if INTERCEPTOR_ALIAS:
@@ -228,20 +246,11 @@ def handler(event, context):
                 f"a new version / repointing the alias failed — so the new list is NOT "
                 f"serving traffic yet. Re-run once resolved.\n\nError: {e}\n\nDiff:\n{diff}",
             )
-            return {"changed": True, "alias_promote_failed": True, "diff": diff}
+            return {"changed": True, "alias_promote_failed": True,
+                    "resnapshot_failed": resnapshot_failed, "diff": diff}
 
-    # 5. Re-snapshot the connector so newly-listed models actually route.
-    try:
-        _resnapshot_connector()
-    except Exception as e:  # noqa: BLE001
-        _notify(
-            "model-refresher: applied list, but connector re-snapshot FAILED",
-            f"Region {REGION}. MODEL_CAPS was updated but the connector re-snapshot "
-            f"failed — new models may list yet 400 on selection until the connector "
-            f"target is refreshed.\n\nError: {e}\n\nDiff applied:\n{diff}",
-        )
+    if resnapshot_failed:
         return {"changed": True, "resnapshot_failed": True, "diff": diff}
-
     _notify("model-refresher: model list updated", f"Region {REGION}.\n\n{diff}")
     return {"changed": True, "region": REGION, "diff": diff,
             "caps": {k: len(v) for k, v in fresh_caps.items()}}
