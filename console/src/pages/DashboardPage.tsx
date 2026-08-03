@@ -55,7 +55,11 @@ export default function DashboardPage() {
       header={
         <Header
           variant="h1"
-          description={`Window ${module.window} · enforcement ${module.enforce_mode} · price map ${module.price_map_version}`}
+          description={`Window ${module.window} · enforcement ${module.enforce_mode} · pricing catalog ${
+            module.pricing?.model_count != null
+              ? `${module.pricing.model_count} models (gen ${module.pricing.refresh_generation ?? '—'})`
+              : 'not yet refreshed'
+          }`}
           actions={
             <Button
               iconName="refresh"

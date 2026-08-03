@@ -18,6 +18,11 @@ Mutations (audited; self-target REJECTED — a second admin must act):
   POST   /counter-reset         body: {sub, window?}
   POST   /alert-subscriptions   body: {email}     (SNS confirmation email sent)
   DELETE /alert-subscriptions?arn=<subscriptionArn>
+  PUT    /pricing/{model}       operator rate override, USD per 1M tokens
+  DELETE /pricing/{model}       remove override (revert to published/unpriced)
+  POST   /pricing/alias         bind a Price List name to a model id
+  DELETE /pricing/alias/{name}  remove a binding
+  POST   /pricing/refresh       run the pricing refresher now
 
 Reads:
   GET /config                   [self] module info for the console shell
@@ -52,9 +57,18 @@ import json
 import logging
 import os
 import re
+import sys
 import time
 
 import boto3
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+for _p in (_HERE, os.path.join(_HERE, "..")):  # Lambda task root / repo tree
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+from pricing.identity import MODEL_ID_RE  # noqa: E402
+from pricing.resolver import UNIT_PER_1M, resolve_rate, unwrap_item  # noqa: E402
 
 log = logging.getLogger()
 log.setLevel(logging.INFO)
@@ -65,7 +79,6 @@ USER_POOL_ID = os.environ.get("USER_POOL_ID", "")
 ALERTS_TOPIC_ARN = os.environ.get("ALERTS_TOPIC_ARN", "")
 ALARM_PREFIX = os.environ.get("ALARM_PREFIX", "open-webui-metering")
 ENFORCE_MODE = os.environ.get("ENFORCE_MODE", "")
-PRICE_MAP_VERSION = os.environ.get("PRICE_MAP_VERSION", "")
 PRICING_REFRESHER_FN = os.environ.get("PRICING_REFRESHER_FN", "")
 HARD_DEFAULT_USD = float(os.environ.get("HARD_DEFAULT_USD", "5"))
 SOFT_DEFAULT_USD = float(os.environ.get("SOFT_DEFAULT_USD", "4"))
@@ -720,18 +733,21 @@ def _unsubscribe_alerts(arn: str, actor: str) -> dict:
     return {"unsubscribed": arn}
 
 
-# ── pricing catalog (docs/plans/metering-admin-console/02-PRICING-INVESTIGATION.md) ──
-# PRICING#<model>/PUBLISHED  (written by the refresher from the AWS Price List)
-# PRICING#<model>/OVERRIDE   (operator-entered here; wins over PUBLISHED)
-# PRICING#_CATALOG/META      (refresher marker: version, count, refreshed_at)
+# ── pricing catalog (.kiro/specs/metering-pricing-single-source/design.md) ──
+# PRICING#<model_id>/PUBLISHED  (refresher, AWS Price List — rates grid per-1M)
+# PRICING#<model_id>/OVERRIDE   (operator-entered here; wins over PUBLISHED)
+# PRICING#_ALIAS/<pl_name>      (operator binding: Price List name → model id)
+# PRICING#_UNMATCHED/<pl_name>  (review queue: published rate, unresolved id)
+# PRICING#_CATALOG/META         (refresh marker: versions, counts, generation)
 
-_MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:\-]{0,127}$")
+# Per-1M validation bound for overrides: $0 … $1,000,000 per 1M tokens.
+_MAX_OVERRIDE_PER_1M = 1e6
 
 
 def _pricing_rows() -> list:
-    """All PRICING# rows via the estimates GSI would miss them (no state attr);
+    """All PRICING# rows; the estimates GSI would miss them (no state attr);
     query the pk space directly with a Scan bounded to PRICING# — the catalog is
-    ~100-200 rows, not the ledger, so this is cheap and paginated defensively."""
+    a few hundred rows, not the ledger, so this is cheap and paginated defensively."""
     items, lek = [], None
     while True:
         kwargs = {
@@ -750,66 +766,98 @@ def _pricing_rows() -> list:
 
 
 def _catalog() -> dict:
-    """Assemble the pricing catalog: per-model published + override + effective."""
+    """The pricing surface: priced models (rates grid + effective standard
+    rate), the unmatched review queue, operator aliases, and refresh meta.
+
+    Alias-materialized rows (alias_of set) fold into their canonical model's
+    `keys` list so the table shows one row per model. Source labels are only
+    the reachable ones: override | aws-published | unpriced (Req 9.5).
+    """
     rows = _pricing_rows()
     models: dict = {}
-    meta = {}
+    unmatched: list = []
+    aliases: list = []
+    meta: dict = {}
     for it in rows:
-        p = _plain(it)
-        pk = p.get("pk", "")
-        model = pk.removeprefix("PRICING#")
-        sk = p.get("sk", "")
-        if model == "_CATALOG":
-            meta = {k: v for k, v in p.items() if k not in ("pk", "sk")}
+        p = unwrap_item(it)
+        pk, sk = p.pop("pk", ""), p.pop("sk", "")
+        key = pk.removeprefix("PRICING#")
+        if key == "_CATALOG":
+            meta = p
             continue
-        entry = models.setdefault(model, {"model": model})
-        for junk in ("pk", "sk"):
-            p.pop(junk, None)
+        if key == "_UNMATCHED":
+            unmatched.append(p)
+            continue
+        if key == "_ALIAS":
+            aliases.append({"price_list_name": sk, "model_id": p.get("model_id"),
+                            "updated_by": p.get("updated_by"), "updated_at": p.get("updated_at")})
+            continue
         if sk == "PUBLISHED":
-            entry["published"] = p
+            canonical = p.get("alias_of") or p.get("canonical_id") or key
+            entry = models.setdefault(canonical, {"model": canonical, "keys": []})
+            entry["keys"].append(key)
+            if key == canonical or "published" not in entry:
+                entry["published"] = p  # the canonical row's data wins
         elif sk == "OVERRIDE":
+            entry = models.setdefault(key, {"model": key, "keys": []})
             entry["override"] = p
-        elif sk == "PROVIDER":
-            entry["provider_row"] = p
-        elif sk == "DEFAULT":
-            entry["default"] = p
-    # compute the effective rate + source for each model (precedence mirrors debit)
+        # legacy PROVIDER/DEFAULT rows (pre-migration) are not part of the
+        # pricing surface — the first refresh garbage-collects them
     out = []
     for model, e in sorted(models.items()):
-        ov, pub, prov, dflt = e.get("override"), e.get("published"), e.get("provider_row"), e.get("default")
-        if ov and (ov.get("input") is not None or ov.get("output") is not None):
-            eff = {"input": ov.get("input"), "output": ov.get("output"), "source": "override"}
-        elif pub:
-            eff = {"input": pub.get("input"), "output": pub.get("output"), "source": "aws-published"}
-        elif prov and (prov.get("input") is not None or prov.get("output") is not None):
-            eff = {"input": prov.get("input"), "output": prov.get("output"), "source": "provider-list"}
-        elif dflt and (dflt.get("input") is not None or dflt.get("output") is not None):
-            eff = {"input": dflt.get("input"), "output": dflt.get("output"), "source": "default-override"}
-        else:
-            eff = {"input": None, "output": None, "source": "unpriced"}
+        pub, ov = e.get("published"), e.get("override")
+        entry = {"override": ov, "published": pub}
+        res_in = resolve_rate(entry, "input")
+        res_out = resolve_rate(entry, "output")
+        eff_src = res_in.source if res_in.source != "unpriced" else res_out.source
         out.append({
             "model": model,
-            "display_name": (pub or {}).get("display_name") or (ov or {}).get("display_name") or model,
+            "display_name": (pub or {}).get("display_name") or model,
             "provider": (pub or {}).get("provider", ""),
-            "effective": eff,
-            "published": pub,
+            "keys": sorted(set(e.get("keys") or [model])),
+            "routing_modes": sorted((pub or {}).get("rates", {}).keys()) if pub else [],
+            "rates": (pub or {}).get("rates"),
+            "resolved_via": (pub or {}).get("resolved_via"),
+            "price_list_name": (pub or {}).get("price_list_name"),
+            "offer_version": (pub or {}).get("offer_version"),
+            # effective standard in-region rate, USD per 1M tokens
+            "effective": {"input_per_1m": res_in.usd_per_1m,
+                          "output_per_1m": res_out.usd_per_1m,
+                          "source": eff_src},
             "override": ov,
-            "provider_row": prov,
-            "default": dflt,
         })
-    return {"models": out, "meta": meta, "count": len(out)}
+    return {
+        "models": out,
+        "unmatched": sorted(unmatched, key=lambda u: str(u.get("price_list_name", ""))),
+        "aliases": sorted(aliases, key=lambda a: str(a.get("price_list_name", ""))),
+        "meta": meta,
+        "count": len(out),
+        "_UNIT": UNIT_PER_1M,
+    }
 
 
 def _put_price_override(model: str, body: dict, actor: str) -> dict:
-    if not _MODEL_RE.match(model):
-        raise ValueError("invalid model id")
+    """Operator override, USD per 1M tokens per direction (Req 5.4, 5.7-5.9).
+
+    Stored flat under scope=ALL: it applies to every tier, routing mode and
+    context; the scope attribute lets a future tier-qualified override coexist
+    without migrating rows. The model id must be settle-reachable (lowercase
+    vendor.model) — an override keyed like a display name could never price.
+    """
+    if not MODEL_ID_RE.match(model):
+        raise ValueError("invalid model id (expected a Bedrock id like vendor.model-name)")
     inp = body.get("input")
     out = body.get("output")
     if inp is None and out is None:
-        raise ValueError("at least one of input/output (USD per token) required")
-    for v in (inp, out):
-        if v is not None and (float(v) < 0 or float(v) > 1):
-            raise ValueError("per-token rate must be between 0 and 1 USD")
+        raise ValueError("at least one of input/output (USD per 1M tokens) required")
+    rates = {}
+    for direction, v in (("input", inp), ("output", out)):
+        if v is None:
+            continue
+        v = float(v)
+        if not (0 <= v <= _MAX_OVERRIDE_PER_1M):
+            raise ValueError(f"per-1M rate must be between 0 and {int(_MAX_OVERRIDE_PER_1M)} USD")
+        rates[direction] = v
     before = _plain(ddb.get_item(
         TableName=TABLE, Key={"pk": {"S": f"PRICING#{model}"}, "sk": {"S": "OVERRIDE"}}, ConsistentRead=True,
     ).get("Item"))
@@ -817,15 +865,14 @@ def _put_price_override(model: str, body: dict, actor: str) -> dict:
     item = {
         "pk": {"S": f"PRICING#{model}"},
         "sk": {"S": "OVERRIDE"},
-        "model": {"S": model},
+        "model_id": {"S": model},
         "source": {"S": "override"},
+        "_UNIT": {"S": UNIT_PER_1M},
+        "scope": {"S": "ALL"},
+        "rates": {"M": {d: {"N": str(v)} for d, v in rates.items()}},
         "updated_by": {"S": actor},
         "updated_at": {"N": str(now)},
     }
-    if inp is not None:
-        item["input"] = {"N": str(float(inp))}
-    if out is not None:
-        item["output"] = {"N": str(float(out))}
     if body.get("note"):
         item["note"] = {"S": str(body["note"])[:500]}
     ddb.put_item(TableName=TABLE, Item=item)
@@ -845,6 +892,70 @@ def _delete_price_override(model: str, actor: str) -> dict:
     ddb.delete_item(TableName=TABLE, Key={"pk": {"S": f"PRICING#{model}"}, "sk": {"S": "OVERRIDE"}})
     _audit(actor, "DELETE_PRICE_OVERRIDE", model, before, {})
     return {"deleted": True, "model": model, "note": "model reverts to AWS-published rate (or unpriced)"}
+
+
+def _put_alias(body: dict, actor: str) -> dict:
+    """Bind a Price List name to a model id (Req 3.4). The binding outranks
+    the automatic control-plane join on the next refresh — no redeploy."""
+    name = str(body.get("price_list_name") or "").strip()
+    model_id = str(body.get("model_id") or "").strip()
+    if not name or len(name) > 128:
+        raise ValueError("price_list_name required (max 128 chars)")
+    if not MODEL_ID_RE.match(model_id):
+        raise ValueError("invalid model id (expected a Bedrock id like vendor.model-name)")
+    before = _plain(ddb.get_item(
+        TableName=TABLE, Key={"pk": {"S": "PRICING#_ALIAS"}, "sk": {"S": name}}, ConsistentRead=True,
+    ).get("Item"))
+    now = int(time.time())
+    ddb.put_item(TableName=TABLE, Item={
+        "pk": {"S": "PRICING#_ALIAS"},
+        "sk": {"S": name},
+        "price_list_name": {"S": name},
+        "model_id": {"S": model_id},
+        "updated_by": {"S": actor},
+        "updated_at": {"N": str(now)},
+    })
+    _audit(actor, "PUT_PRICING_ALIAS", name, before, {"model_id": model_id})
+    return {"price_list_name": name, "model_id": model_id,
+            "note": "applies on the next pricing refresh"}
+
+
+def _delete_alias(name: str, actor: str) -> dict:
+    name = str(name or "").strip()
+    before = _plain(ddb.get_item(
+        TableName=TABLE, Key={"pk": {"S": "PRICING#_ALIAS"}, "sk": {"S": name}}, ConsistentRead=True,
+    ).get("Item"))
+    if not before:
+        return {"deleted": False, "reason": "no alias for this Price List name"}
+    ddb.delete_item(TableName=TABLE, Key={"pk": {"S": "PRICING#_ALIAS"}, "sk": {"S": name}})
+    _audit(actor, "DELETE_PRICING_ALIAS", name, before, {})
+    return {"deleted": True, "price_list_name": name,
+            "note": "the name returns to automatic resolution on the next refresh"}
+
+
+def _pricing_meta() -> dict:
+    """Catalog freshness for GET /config — read from the live refresh marker
+    (PRICING#_CATALOG/META), not from a deploy-time constant (Req 8.3).
+    Fail-soft: the console shell must render even if this read hiccups."""
+    try:
+        item = ddb.get_item(
+            TableName=TABLE, Key={"pk": {"S": "PRICING#_CATALOG"}, "sk": {"S": "META"}},
+        ).get("Item")
+    except Exception as e:  # noqa: BLE001
+        log.warning(f"pricing meta read failed: {e}")
+        item = None
+    if not item:
+        return {"catalog_version": None, "refreshed_at": None}
+    p = unwrap_item(item)
+    return {
+        "catalog_version": p.get("offer_versions") or p.get("version"),
+        "refresh_generation": p.get("refresh_generation"),
+        "model_count": p.get("model_count"),
+        "unmatched_count": p.get("unmatched_count"),
+        "refreshed_at": p.get("refreshed_at"),
+        "partial": p.get("partial", False),
+        "region": p.get("region"),
+    }
 
 
 def _refresh_pricing(actor: str) -> dict:
@@ -886,7 +997,7 @@ def handler(event, context):
         is_admin = _is_admin(claims)
         cfg = {
             "enforce_mode": ENFORCE_MODE,
-            "price_map_version": PRICE_MAP_VERSION,
+            "pricing": _cached("config_pricing", _pricing_meta),
             "defaults": {"hard_limit_usd": HARD_DEFAULT_USD, "soft_limit_usd": SOFT_DEFAULT_USD, "rpm_limit": RPM_DEFAULT},
             "window": _window_now(),
             "is_admin": is_admin,
@@ -1025,6 +1136,15 @@ def handler(event, context):
             return _resp(400, {"error": "arn query param required"})
         out = _unsubscribe_alerts(arn, actor)
         return _resp(400 if "error" in out else 200, out)
+
+    if route == "POST /pricing/alias":
+        try:
+            return _resp(200, _put_alias(body, actor))
+        except ValueError as e:
+            return _resp(400, {"error": str(e)})
+
+    if route == "DELETE /pricing/alias/{name}":
+        return _resp(200, _delete_alias(path_params.get("name", ""), actor))
 
     if route == "PUT /pricing/{model}":
         try:

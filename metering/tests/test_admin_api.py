@@ -10,7 +10,10 @@ import os
 import pathlib
 import sys
 
+import pytest
+
 HERE = pathlib.Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent))  # metering/ → import pricing
 
 
 def _load():
@@ -23,6 +26,25 @@ def _load():
 
 
 admin = _load()
+
+
+class FakeDdb:
+    """get/put/delete double for the override + alias mutation paths."""
+
+    def __init__(self):
+        self.items: dict = {}
+
+    def get_item(self, TableName=None, Key=None, **kw):
+        item = self.items.get((Key["pk"]["S"], Key["sk"]["S"]))
+        return {"Item": item} if item else {}
+
+    def put_item(self, TableName=None, Item=None, **kw):
+        self.items[(Item["pk"]["S"], Item["sk"]["S"])] = Item
+        return {}
+
+    def delete_item(self, TableName=None, Key=None, **kw):
+        self.items.pop((Key["pk"]["S"], Key["sk"]["S"]), None)
+        return {}
 
 
 def _claims(groups):
@@ -87,6 +109,54 @@ def test_cursor_roundtrip():
     assert admin._cursor_in(None) is None
     # a garbage cursor decodes to None instead of raising
     assert admin._cursor_in("!!!not-base64!!!") is None
+
+
+def test_price_override_per_1m_validation_bounds(monkeypatch):
+    """Req 5.4: rates are USD per 1M tokens, 0 ≤ v ≤ 1e6, model id must be
+    settle-reachable. Valid writes carry rates map + scope + _UNIT."""
+    fake = FakeDdb()
+    monkeypatch.setattr(admin, "ddb", fake)
+    with pytest.raises(ValueError):
+        admin._put_price_override("Claude3Haiku", {"input": 5.5}, "a1")  # not a model id
+    with pytest.raises(ValueError):
+        admin._put_price_override("anthropic.claude-opus-5", {}, "a1")  # no direction
+    with pytest.raises(ValueError):
+        admin._put_price_override("anthropic.claude-opus-5", {"input": -1}, "a1")
+    with pytest.raises(ValueError):
+        admin._put_price_override("anthropic.claude-opus-5", {"output": 2e6}, "a1")
+    out = admin._put_price_override("anthropic.claude-opus-5", {"input": 4.0, "output": 20.0, "note": "EDP"}, "a1")
+    row = fake.items[("PRICING#anthropic.claude-opus-5", "OVERRIDE")]
+    assert row["_UNIT"]["S"] == "USD/1M-tokens" and row["scope"]["S"] == "ALL"
+    assert row["rates"]["M"]["input"]["N"] == "4.0"
+    assert out  # audited after-image returned
+    # audit row written
+    assert any(pk.startswith("AUDIT#") for (pk, _sk) in fake.items)
+
+
+def test_alias_binding_validates_and_audits(monkeypatch):
+    fake = FakeDdb()
+    monkeypatch.setattr(admin, "ddb", fake)
+    with pytest.raises(ValueError):
+        admin._put_alias({"price_list_name": "Ministral 8B 3.0", "model_id": "NotAnId"}, "a1")
+    with pytest.raises(ValueError):
+        admin._put_alias({"price_list_name": "", "model_id": "mistral.ministral-3-8b-instruct"}, "a1")
+    out = admin._put_alias(
+        {"price_list_name": "Ministral 8B 3.0", "model_id": "mistral.ministral-3-8b-instruct"}, "a1")
+    assert out["model_id"] == "mistral.ministral-3-8b-instruct"
+    assert ("PRICING#_ALIAS", "Ministral 8B 3.0") in fake.items
+    assert admin._delete_alias("Ministral 8B 3.0", "a1")["deleted"] is True
+    assert ("PRICING#_ALIAS", "Ministral 8B 3.0") not in fake.items
+
+
+def test_alias_routes_require_admin_group():
+    """Req 11.3: pricing alias mutation is admin-gated like every mutation."""
+    for route, params in [("POST /pricing/alias", {}),
+                          ("DELETE /pricing/alias/{name}", {"name": "X"})]:
+        event = {"routeKey": route, "pathParameters": params,
+                 "requestContext": {"authorizer": {"jwt": {"claims": _claims("[user]")}}},
+                 "body": "{}"}
+        r = admin.handler(event, None)
+        assert r["statusCode"] == 403, route
 
 
 def test_counter_row_derives_pct_and_total():

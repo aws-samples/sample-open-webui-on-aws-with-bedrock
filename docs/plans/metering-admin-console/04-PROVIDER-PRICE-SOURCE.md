@@ -5,6 +5,15 @@ SPDX-License-Identifier: MIT-0
 
 # Provider price-list source — filling the frontier gap with real rates
 
+> **SUPERSEDED (2026-08).** The provider-list (LiteLLM) tier was removed by
+> the single-source pricing redesign
+> ([`.kiro/specs/metering-pricing-single-source/`](../../../.kiro/specs/metering-pricing-single-source/design.md),
+> analysis in [`05-PRICING-SINGLE-SOURCE.md`](05-PRICING-SINGLE-SOURCE.md)):
+> the marketplace offer file (`AmazonBedrockFoundationModels`) turned out to
+> carry the frontier rates this feed existed to approximate, keyed by Price
+> List display name. The refresher now joins those names to model ids via the
+> Bedrock control plane; nothing external to AWS is consulted. Kept for history.
+
 Follow-up to [`03-PRICING-RECONCILIATION.md`](03-PRICING-RECONCILIATION.md).
 
 ## The insight (operator, verified correct)

@@ -110,8 +110,8 @@ def load_interceptor(fake_ddb, enforce="ENFORCE"):
         "GRACE_REQUESTS": "2",
         "HARD_DEFAULT_USD": "5",
         "PROJECT_MAP": json.dumps({"engineering": "proj_eng", "*": "proj_default"}),
-        "PRICE_MAP": json.dumps({"models": {"qwen.qwen3-32b": {"standard": {"input": 1.5e-07, "output": 6e-07}}}}),
     }
+    os.environ.pop("PRICE_MAP", None)  # removed: estimates read the DynamoDB catalog
     os.environ.update(env)
     spec = importlib.util.spec_from_file_location(
         "metering_interceptor", HERE.parent.parent / "gateway" / "metering-interceptor" / "index.py")
@@ -147,6 +147,17 @@ CHAT_BODY = {"model": "bedrock/qwen.qwen3-32b",
              "stream": True}
 
 
+def seed_pricing(ddb, model="qwen.qwen3-32b", input_1m="0.15", output_1m="0.6"):
+    """A PUBLISHED catalog row in the current contract (per-1M rates grid)."""
+    ddb.items[(f"PRICING#{model}", "PUBLISHED")] = {
+        "pk": {"S": f"PRICING#{model}"}, "sk": {"S": "PUBLISHED"},
+        "model_id": {"S": model}, "_UNIT": {"S": "USD/1M-tokens"},
+        "offer_version": {"S": "20260728133434"},
+        "rates": {"M": {"in_region": {"M": {"standard": {"M": {"default": {"M": {
+            "input": {"N": input_1m}, "output": {"N": output_1m}}}}}}}}},
+    }
+
+
 def _resp_body(result):
     raw = result["http"]["transformedGatewayResponse"]["body"]
     return json.loads(base64.b64decode(raw))
@@ -170,6 +181,7 @@ def test_models_listing_still_capability_filtered_and_never_blocked():
 
 def test_under_quota_forwards_with_mutations_and_floor_debit():
     ddb = FakeDdb()
+    seed_pricing(ddb)
     mod = load_interceptor(ddb)
     r = mod.lambda_handler(gw_event("/v1/chat/completions", CHAT_BODY, mint_jwt()), None)
     body = _req_body(r)
@@ -177,9 +189,51 @@ def test_under_quota_forwards_with_mutations_and_floor_debit():
     assert body["max_tokens"] == 8192
     # project header injected per group map
     assert r["http"]["transformedGatewayRequest"]["headers"]["OpenAI-Project"] == "proj_eng"
-    # floor debit estimate written OPEN
+    # floor debit estimate written OPEN, priced from the CATALOG row and keyed
+    # by the parsed model id (same key the debit Lambda settles under)
     ests = [v for (pk, sk), v in ddb.items.items() if pk.startswith("EST#")]
     assert len(ests) == 1 and ests[0]["state"]["S"] == "OPEN"
+    assert ests[0]["model"]["S"] == "qwen.qwen3-32b"
+    body_bytes = len(json.dumps(CHAT_BODY).encode())
+    expected = round((body_bytes // 4) * 0.15e-06 + 8192 * 0.6e-06, 8)
+    assert abs(float(ests[0]["usd"]["N"]) - expected) < 1e-12
+
+
+def test_unresolvable_model_estimates_zero_and_admits():
+    """No catalog row and no hardcoded fallback rates (Req 8.5): the request
+    is admitted with a $0 floor estimate — unpriced is a settle-path signal."""
+    ddb = FakeDdb()  # no PRICING rows seeded
+    mod = load_interceptor(ddb)
+    r = mod.lambda_handler(gw_event("/v1/chat/completions", CHAT_BODY, mint_jwt()), None)
+    assert "transformedGatewayRequest" in r["http"]
+    ests = [v for (pk, sk), v in ddb.items.items() if pk.startswith("EST#")]
+    assert len(ests) == 1 and float(ests[0]["usd"]["N"]) == 0.0
+
+
+def test_estimate_derives_routing_and_stores_parsed_key():
+    """A global.-prefixed invocation estimates at the global rate and the EST
+    row carries the catalog key so settle-time matching works (Req 7.1, 8.4)."""
+    ddb = FakeDdb()
+    ddb.items[("PRICING#anthropic.claude-haiku-4-5", "PUBLISHED")] = {
+        "pk": {"S": "PRICING#anthropic.claude-haiku-4-5"}, "sk": {"S": "PUBLISHED"},
+        "_UNIT": {"S": "USD/1M-tokens"},
+        "rates": {"M": {
+            "in_region": {"M": {"standard": {"M": {"default": {"M": {
+                "input": {"N": "1.1"}, "output": {"N": "5.5"}}}}}}},
+            "global": {"M": {"standard": {"M": {"default": {"M": {
+                "input": {"N": "1"}, "output": {"N": "5"}}}}}}},
+        }},
+    }
+    mod = load_interceptor(ddb)
+    body = {"model": "bedrock/global.anthropic.claude-haiku-4-5", "max_tokens": 1000,
+            "messages": [{"role": "user", "content": "hi"}]}
+    mod.lambda_handler(gw_event("/v1/messages", body, mint_jwt()), None)
+    ests = [v for (pk, sk), v in ddb.items.items() if pk.startswith("EST#")]
+    assert len(ests) == 1
+    assert ests[0]["model"]["S"] == "anthropic.claude-haiku-4-5"  # prefix peeled
+    body_bytes = len(json.dumps(body).encode())
+    expected = round((body_bytes // 4) * 1e-06 + 1000 * 5e-06, 8)  # global rates
+    assert abs(float(ests[0]["usd"]["N"]) - expected) < 1e-12
 
 
 def test_messages_lane_gets_workspace_header():

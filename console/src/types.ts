@@ -12,7 +12,15 @@ export interface ConsoleConfig {
 
 export interface ModuleConfig {
   enforce_mode: string;
-  price_map_version: string;
+  pricing?: {
+    catalog_version?: Record<string, string> | string | null;
+    refresh_generation?: number;
+    model_count?: number;
+    unmatched_count?: number;
+    refreshed_at?: number | null;
+    partial?: boolean;
+    region?: string;
+  };
   admin_groups: string[];
   defaults: { hard_limit_usd: number; soft_limit_usd: number; rpm_limit: number };
   window: string;
@@ -88,6 +96,10 @@ export interface LedgerCall {
   source?: string;
   billing_group?: string;
   price_map_version?: string;
+  price_source?: string;
+  routing?: string;
+  rate_fallback?: boolean;
+  matched_routing?: string;
 }
 
 export interface OpenEstimate {
@@ -154,48 +166,75 @@ export interface SearchUser {
   groups: string[];
 }
 
+/** routing → tier → context → direction → USD per 1M tokens */
+export type RateGrid = Record<string, Record<string, Record<string, Record<string, number>>>>;
+
+export interface PriceOverride {
+  /** current contract: per-1M rates map */
+  rates?: Record<string, number>;
+  scope?: string;
+  _UNIT?: string;
+  /** legacy (pre-migration) flat per-token attrs, still honored by the resolver */
+  input?: number;
+  output?: number;
+  note?: string;
+  updated_by?: string;
+  updated_at?: number;
+}
+
 export interface PriceRow {
   model: string;
   display_name: string;
   provider: string;
-  effective: { input: number | null; output: number | null; source: 'override' | 'aws-published' | 'provider-list' | 'default-override' | 'unpriced' };
-  published?: {
-    input?: number;
-    output?: number;
-    provider?: string;
-    display_name?: string;
-    effective_date?: string;
-    price_map_version?: string;
-    updated_at?: number;
-  } | null;
-  override?: {
-    input?: number;
-    output?: number;
-    note?: string;
-    updated_by?: string;
-    updated_at?: number;
-  } | null;
-  default?: {
-    input?: number;
-    output?: number;
-    note?: string;
-    source_ref?: string;
-  } | null;
-  provider_row?: {
-    input?: number;
-    output?: number;
-    source_ref?: string;
-  } | null;
+  /** every catalog key this model resolves under (canonical + alias keys) */
+  keys: string[];
+  routing_modes: string[];
+  rates?: RateGrid | null;
+  resolved_via?: 'direct-id' | 'control-plane-name' | 'alias' | string;
+  price_list_name?: string | null;
+  offer_version?: string | null;
+  /** effective standard in-region rate, USD per 1M tokens */
+  effective: {
+    input_per_1m: number | null;
+    output_per_1m: number | null;
+    source: 'override' | 'aws-published' | 'unpriced';
+  };
+  override?: PriceOverride | null;
+}
+
+export interface UnmatchedRow {
+  price_list_name: string;
+  provider?: string;
+  service_code?: string;
+  reason: 'no-control-plane-match' | 'ambiguous-match' | 'no-token-rates' | string;
+  candidate_rates?: RateGrid;
+  refresh_generation?: number;
+  updated_at?: number;
+}
+
+export interface PricingAlias {
+  price_list_name: string;
+  model_id?: string;
+  updated_by?: string;
+  updated_at?: number;
 }
 
 export interface PricingCatalog {
   models: PriceRow[];
+  unmatched: UnmatchedRow[];
+  aliases: PricingAlias[];
   count: number;
+  _UNIT?: string;
   meta: {
-    version?: string;
+    offer_versions?: Record<string, string>;
+    refresh_generation?: number;
     model_count?: number;
+    row_count?: number;
+    unmatched_count?: number;
+    alias_count?: number;
     region?: string;
     refreshed_at?: number;
+    partial?: boolean;
   };
 }
 

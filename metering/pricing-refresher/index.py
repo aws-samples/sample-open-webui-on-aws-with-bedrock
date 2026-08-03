@@ -1,342 +1,464 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
+"""Metering pricing refresher — the single automated price source.
+
+Reads the three Bedrock Price List offer files for the deployment region
+(public HTTPS, no credentials — Requirement 11.2), joins every token-priced
+product to a Bedrock model id, and writes the pricing catalog the settle and
+admission paths resolve from:
+
+    PRICING#<model_id>  sk=PUBLISHED    rate grid, AWS-sourced (this Lambda)
+    PRICING#<model_id>  sk=OVERRIDE     operator-owned — NEVER written here
+    PRICING#_ALIAS      sk=<pl_name>    operator binding, read here
+    PRICING#_UNMATCHED  sk=<pl_name>    review queue for unresolved rates
+    PRICING#_CATALOG    sk=META         refresh marker
+
+Identity resolution per parsed product (design §4.2), first hit wins:
+  1. operator alias  (PRICING#_ALIAS — operator intent outranks inference)
+  2. direct model id (the usage type embeds one, e.g. mantle shapes)
+  3. control-plane name join (bedrock:ListFoundationModels, normalized
+     name-to-name comparison — never applied to a model id)
+Zero or multiple candidates → PRICING#_UNMATCHED, which never prices a
+request (Requirements 2.7, 3.1, 3.2).
+
+Catalog keys are materialized on the CATALOG side: each resolved model is
+written under every unambiguous alias key of its id(s) (`identity.id_aliases`),
+so the settle path does one exact GetItem on the invoked key and never
+rewrites the id it is pricing (Requirements 2.5, 2.9). A key claimed by two
+different models is not written as an alias for either (Requirement 2.7).
+
+Garbage collection (Requirements 10.1, 10.2, 4.6):
+  - PUBLISHED rows whose key is not a model id (legacy display-token keys the
+    settle path can never read) — deleted unconditionally.
+  - Legacy PROVIDER / DEFAULT rows (removed source tiers) — deleted
+    unconditionally.
+  - Model-id-shaped PUBLISHED rows absent from this run — deleted only when
+    every offer file fetched successfully.
+  - OVERRIDE and _ALIAS rows — never touched.
+
+Env: TABLE, REGION (deployment region, default us-east-1).
 """
-Metering pricing refresher — keeps the model pricing catalog current from the
-authoritative AWS Price List Bulk API (docs/plans/metering-admin-console/
-02-PRICING-INVESTIGATION.md).
 
-Runs on a schedule (default daily). For every Bedrock inference token SKU it
-finds, it writes a catalog row:
-
-    pk=PRICING#<model_key>  sk=PUBLISHED
-      { input, output, cache_read, tier maps, display_name, provider, service,
-        effective_date, price_map_version, source=aws-published, updated_at }
-
-Operator overrides live in SEPARATE rows the admin API owns:
-
-    pk=PRICING#<model_key>  sk=OVERRIDE
-      { input, output, note, updated_by, updated_at, source=override }
-
-The debit Lambda resolves a rate as:  OVERRIDE → PUBLISHED → bundled file → unpriced.
-So published prices refresh WITHOUT a redeploy, operator overrides are never
-clobbered by a refresh (different sk), and a genuinely-unpublished frontier
-model (e.g. claude-sonnet-5) stays unpriced until an operator adds an override
-or AWS publishes — never a silent $0, never a guess.
-
-Why multiple offer files + shapes: Bedrock token pricing is spread across the
-AmazonBedrock (mantle + classic) and AmazonBedrockService (Claude 4/4.5) offer
-files under several usage-type shapes — an earlier single-file/single-shape
-parser missed ~75 models. See the investigation doc.
-
-Env: TABLE, REGION (offer-file region, default us-east-1).
-"""
-
-import datetime
 import json
 import logging
 import os
-import re
+import sys
 import time
 import urllib.request
 
 import boto3
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+for _p in (_HERE, os.path.join(_HERE, "..")):  # Lambda task root / repo tree
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+from pricing import identity, offers  # noqa: E402
+from pricing.resolver import UNIT_PER_1M  # noqa: E402
 
 log = logging.getLogger()
 log.setLevel(logging.INFO)
 
 TABLE = os.environ["TABLE"]
 REGION = os.environ.get("REGION", "us-east-1")
-SERVICES = ["AmazonBedrock", "AmazonBedrockService"]
+# Precedence order for first-wins leaf merges: the marketplace file publishes
+# per-1M natively and carries the modern Anthropic grid; the mantle/legacy and
+# Service files fill the remainder.
+SERVICES = ["AmazonBedrockFoundationModels", "AmazonBedrock", "AmazonBedrockService"]
 OFFER_URL = "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/{svc}/current/{region}/index.json"
 
-# Provider-list price source (docs/plans/metering-admin-console/04-PROVIDER-PRICE-SOURCE.md):
-# LiteLLM's community price JSON — the de-facto machine-readable list of provider
-# public rates, keyed by Bedrock-namespaced model ids. Fills the gap for models
-# AWS hasn't published a SKU for yet (frontier Claude/GPT versions). PINNED to a
-# commit SHA (not floating main) so an upstream edit can't silently move dollars;
-# override via env to re-pin or disable (set PROVIDER_PRICE_URL="").
-PROVIDER_PRICE_REF = os.environ.get("PROVIDER_PRICE_REF", "ba70189e328a5376700e9535d0629118857395e7")
-PROVIDER_PRICE_URL = os.environ.get(
-    "PROVIDER_PRICE_URL",
-    f"https://raw.githubusercontent.com/BerriAI/litellm/{PROVIDER_PRICE_REF}/model_prices_and_context_window.json",
-)
-# reject implausible rates before they touch a billing path (per-token USD)
-_MAX_SANE_RATE = 1.0
-
-
-def _load_seed_overrides() -> dict:
-    """Curated default overrides for frontier model ids AWS hasn't published a
-    SKU for yet (config/model-price-overrides.json, bundled into this asset).
-    Seeded as PRICING#<model>/DEFAULT so a real AWS-published rate or an operator
-    override both outrank them — auto-healing (03-PRICING-RECONCILIATION.md)."""
-    try:
-        here = os.path.dirname(os.path.abspath(__file__))
-        with open(os.path.join(here, "model-price-overrides.json")) as f:
-            return json.load(f).get("overrides", {})
-    except (OSError, ValueError):
-        return {}
-
-_DIR = r"(?P<direction>input|output|cache-read|cache-write)"
-SHAPES = [
-    re.compile(rf"^[A-Z0-9]+-(?P<model>.+)-mantle-{_DIR}-tokens-(?P<tier>standard|batch|flex|priority)$"),
-    re.compile(rf"^[A-Z0-9]+-(?P<model>.+)-{_DIR}-tokens(?:-(?P<tier>batch|flex|priority))?$"),
-    re.compile(rf"^[A-Z0-9]+-(?P<model>.+)-{_DIR}-tokens-cross-region-(?:global|geo)(?:-(?P<tier>batch|flex|priority))?$"),
-]
+REASON_NO_MATCH = "no-control-plane-match"
+REASON_AMBIGUOUS = "ambiguous-match"
 
 ddb = boto3.client("dynamodb")
 cw = boto3.client("cloudwatch")
+# The bedrock client resolves auth at construction (bearer-token support), so
+# build it lazily to keep module import free of credential lookups (tests).
+_bedrock = None
+
+
+def _bedrock_client():
+    global _bedrock  # noqa: PLW0603 — per-container client cache
+    if _bedrock is None:
+        _bedrock = boto3.client("bedrock", region_name=REGION)
+    return _bedrock
 
 
 def _metric(name: str, value: float = 1, unit: str = "Count"):
     try:
         cw.put_metric_data(Namespace="Metering", MetricData=[{"MetricName": name, "Value": value, "Unit": unit}])
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:  # noqa: BLE001 — metrics must never break the refresh
         log.warning(f"metric {name} failed: {e}")
 
 
-def _classify(usagetype: str):
-    for shape in SHAPES:
-        m = shape.match(usagetype)
-        if m:
-            gd = m.groupdict()
-            return gd["model"], gd["direction"], (gd.get("tier") or "standard")
-    return None
-
-
-def _fetch(svc: str) -> dict:
+def _fetch_offer(svc: str) -> dict:
     url = OFFER_URL.format(svc=svc, region=REGION)
     with urllib.request.urlopen(url, timeout=180) as r:  # noqa: S310 — fixed https AWS URL
         return json.loads(r.read())
 
 
-def _parse() -> tuple[dict, str]:
-    """Return {model_key: {tier: {dir: per_token_usd}, _meta:{...}}}, version."""
-    models: dict = {}
-    version = "unknown"
-    for svc in SERVICES:
-        try:
-            offer = _fetch(svc)
-        except Exception as e:  # noqa: BLE001
-            log.warning(f"{svc} offer file unavailable: {e}")
-            continue
-        version = offer.get("version", version) or version
-        for product in offer.get("products", {}).values():
-            attrs = product.get("attributes", {})
-            cls = _classify(attrs.get("usagetype", ""))
-            if not cls:
-                continue
-            model_key, direction, tier = cls
-            terms = offer.get("terms", {}).get("OnDemand", {}).get(product["sku"], {})
-            for term in terms.values():
-                for dim in term.get("priceDimensions", {}).values():
-                    if "token" not in (dim.get("unit") or "").lower():
-                        continue
-                    per_1k = float(dim.get("pricePerUnit", {}).get("USD", "0"))
-                    entry = models.setdefault(model_key, {}).setdefault(tier, {})
-                    entry[direction] = per_1k / 1000.0
-                    meta = models[model_key].setdefault("_meta", {})
-                    meta.setdefault("display_name", attrs.get("model", model_key))
-                    meta.setdefault("provider", attrs.get("provider", ""))
-                    meta.setdefault("service", svc)
-                    meta.setdefault("effective_date", term.get("effectiveDate", ""))
-    return models, version
+def _list_cp_models() -> list:
+    """(model_id, model_name, provider) triples from the Bedrock control plane."""
+    resp = _bedrock_client().list_foundation_models()
+    return [
+        (m.get("modelId", ""), m.get("modelName", ""), m.get("providerName", ""))
+        for m in resp.get("modelSummaries", [])
+        if m.get("modelId")
+    ]
 
 
-def _write_published(models: dict, version: str) -> int:
-    now = int(time.time())
-    written = 0
-    for model_key, tiers in models.items():
-        meta = tiers.get("_meta", {})
-        std = tiers.get("standard", {})
-        item = {
-            "pk": {"S": f"PRICING#{model_key}"},
-            "sk": {"S": "PUBLISHED"},
-            "model": {"S": model_key},
-            "source": {"S": "aws-published"},
-            "display_name": {"S": str(meta.get("display_name", model_key))[:128]},
-            "provider": {"S": str(meta.get("provider", ""))[:64]},
-            "service": {"S": str(meta.get("service", ""))[:64]},
-            "effective_date": {"S": str(meta.get("effective_date", ""))},
-            "price_map_version": {"S": str(version)},
-            "updated_at": {"N": str(now)},
-            # store the full tier map as JSON (rates are tiny floats; one attr keeps it simple)
-            "tiers": {"S": json.dumps({t: v for t, v in tiers.items() if t != "_meta"})},
-            # convenience top-level standard rates for cheap reads
-            "input": {"N": str(std.get("input", 0) or 0)},
-            "output": {"N": str(std.get("output", 0) or 0)},
+def _query_pk(pk: str) -> list:
+    items, lek = [], None
+    while True:
+        kwargs = {
+            "TableName": TABLE,
+            "KeyConditionExpression": "pk = :p",
+            "ExpressionAttributeValues": {":p": {"S": pk}},
         }
-        ddb.put_item(TableName=TABLE, Item=item)
-        written += 1
-    return written
-
-
-def _seed_defaults(published_models: set) -> int:
-    """Write PRICING#<model>/DEFAULT rows for curated frontier models AWS hasn't
-    published a SKU for. Skip any model AWS DID publish (aws-published wins and
-    the seed would be dead weight). Operator OVERRIDE rows are a different sk and
-    always win, so seeding never clobbers an operator's rate."""
-    seeds = _load_seed_overrides()
-    now = int(time.time())
-    written = 0
-    for model_key, spec in seeds.items():
-        if model_key in published_models:
-            continue  # AWS now prices it — don't seed a stale estimate
-        item = {
-            "pk": {"S": f"PRICING#{model_key}"},
-            "sk": {"S": "DEFAULT"},
-            "model": {"S": model_key},
-            "source": {"S": "default-override"},
-            "updated_at": {"N": str(now)},
-        }
-        if spec.get("input") is not None:
-            item["input"] = {"N": str(float(spec["input"]))}
-        if spec.get("output") is not None:
-            item["output"] = {"N": str(float(spec["output"]))}
-        if spec.get("note"):
-            item["note"] = {"S": str(spec["note"])[:500]}
-        if spec.get("source_ref"):
-            item["source_ref"] = {"S": str(spec["source_ref"])[:256]}
-        ddb.put_item(TableName=TABLE, Item=item)
-        written += 1
-    return written
-
-
-_VER_SUFFIX = re.compile(r"(-\d{8})?(-v\d+:\d+)?(@\d{8})?$")
-
-
-def _normalize_provider_keys(k: str) -> list:
-    """Map a LiteLLM key to the model id(s) our debit/interceptor settle under.
-    They use ids like 'anthropic.claude-sonnet-5' / 'openai.gpt-5.6-sol' (gateway
-    'bedrock/' or 'bedrock_mantle/' prefix and region qualifiers stripped).
-    LiteLLM keys take many shapes: 'anthropic.claude-sonnet-5',
-    'bedrock_mantle/openai.gpt-5.6-sol', 'us.anthropic.claude-…',
-    'anthropic.claude-haiku-4-5-20251001-v1:0'. Returns the canonical id AND a
-    version-suffix-trimmed alias (so a dated/versioned SKU also matches our bare
-    id); empty list if it isn't a Bedrock-family model id."""
-    k = k.strip()
-    for pfx in ("bedrock_mantle/", "bedrock_converse/", "bedrock/"):
-        if k.startswith(pfx):
-            k = k[len(pfx):]
+        if lek:
+            kwargs["ExclusiveStartKey"] = lek
+        page = ddb.query(**kwargs)
+        items.extend(page.get("Items", []))
+        lek = page.get("LastEvaluatedKey")
+        if not lek:
             break
-    # drop leading region scopes: us. eu. apac. global. <region>.
-    parts = k.split(".")
-    if len(parts) > 2 and parts[0] in ("us", "eu", "apac", "global", "ap", "ca", "sa"):
-        k = ".".join(parts[1:])
-    if "." not in k:  # not a provider.model id (e.g. bare 'claude-…' or 'azure/…')
-        return []
-    ids = {k}
-    trimmed = _VER_SUFFIX.sub("", k)
-    if trimmed and trimmed != k:
-        ids.add(trimmed)
-    return list(ids)
+    return items
 
 
-def _fetch_provider_rates() -> dict:
-    """Return {model_id: {'input':x,'output':y,'cache-read':z,'_key':litellm_key}}
-    for Bedrock-namespaced models with sane token costs. Never raises."""
-    if not PROVIDER_PRICE_URL:
-        return {}
-    out: dict = {}
-    try:
-        with urllib.request.urlopen(PROVIDER_PRICE_URL, timeout=60) as r:  # noqa: S310 — pinned https URL
-            data = json.loads(r.read())
-    except Exception as e:  # noqa: BLE001
-        log.warning(f"provider price list unavailable: {e}")
-        _metric("ProviderPriceFetchFailure")
-        return {}
-    def sane(v):
-        return isinstance(v, (int, float)) and 0 < float(v) <= _MAX_SANE_RATE
-
-    for key, spec in data.items():
-        if not isinstance(spec, dict):
-            continue
-        prov = str(spec.get("litellm_provider", ""))
-        if "bedrock" not in prov:  # only Bedrock-served rows apply to our bill
-            continue
-        model_ids = _normalize_provider_keys(key)
-        if not model_ids:
-            continue
-        entry = {}
-        if sane(spec.get("input_cost_per_token")):
-            entry["input"] = float(spec["input_cost_per_token"])
-        if sane(spec.get("output_cost_per_token")):
-            entry["output"] = float(spec["output_cost_per_token"])
-        if sane(spec.get("cache_read_input_token_cost")):
-            entry["cache-read"] = float(spec["cache_read_input_token_cost"])
-        if not entry:
-            continue
-        for model_id in model_ids:
-            e = dict(entry)
-            e["_key"] = key
-            # an EXACT key match beats a version-trimmed alias; among same-kind,
-            # the shortest (most canonical, region-unqualified) key wins.
-            e["_exact"] = model_id == key
-            prev = out.get(model_id)
-            if (not prev
-                    or (e["_exact"] and not prev.get("_exact"))
-                    or (e["_exact"] == prev.get("_exact") and len(key) < len(prev.get("_key", "")))):
-                out[model_id] = e
+def _load_aliases() -> dict:
+    """Operator bindings: Price List name → model id (one Query, Req 2.4)."""
+    out = {}
+    for it in _query_pk("PRICING#_ALIAS"):
+        name = it.get("sk", {}).get("S", "")
+        mid = it.get("model_id", {}).get("S", "")
+        if name and mid and identity.MODEL_ID_RE.match(mid):
+            out[name] = mid
     return out
 
 
-def _write_provider(provider_rates: dict, published_models: set) -> int:
-    """Write PRICING#<model>/PROVIDER rows ONLY for models AWS did not publish —
-    AWS is authoritative for the actual invoice where it has a SKU."""
-    now = int(time.time())
-    written = 0
-    for model_id, entry in provider_rates.items():
-        if model_id in published_models:
-            continue  # AWS prices it — provider list is a proxy only for the gap
-        item = {
-            "pk": {"S": f"PRICING#{model_id}"},
-            "sk": {"S": "PROVIDER"},
-            "model": {"S": model_id},
-            "source": {"S": "provider-list"},
-            "source_ref": {"S": f"litellm@{PROVIDER_PRICE_REF[:12]}:{entry.get('_key','')}"[:256]},
-            "updated_at": {"N": str(now)},
-        }
-        tiers = {"standard": {k: v for k, v in entry.items() if not k.startswith("_")}}
-        item["tiers"] = {"S": json.dumps(tiers)}
-        if "input" in entry:
-            item["input"] = {"N": str(entry["input"])}
-        if "output" in entry:
-            item["output"] = {"N": str(entry["output"])}
-        ddb.put_item(TableName=TABLE, Item=item)
-        written += 1
+# ── resolution and grid accumulation ─────────────────────────────────────────
+
+def _new_entry(display: str, provider: str, via: str, service_code: str, pl_name: str | None):
+    return {
+        "grid": {},
+        "display_name": display,
+        "provider": provider,
+        "via": via,
+        "service_code": service_code,
+        "price_list_name": pl_name,
+        "effective_date": "",
+        "extra_ids": set(),
+    }
+
+
+def _merge_rate(entry: dict, r) -> None:
+    cell = (entry["grid"].setdefault(r.routing, {})
+            .setdefault(r.tier, {}).setdefault(r.context, {}))
+    cell.setdefault(r.direction, r.usd_per_1m)  # first-wins: file order is precedence
+    if not entry["effective_date"] and r.effective_date:
+        entry["effective_date"] = r.effective_date
+    if not entry["provider"] and r.provider:
+        entry["provider"] = r.provider
+
+
+def _resolve(parsed_by_service: dict, aliases: dict, cp_models: list) -> tuple[dict, dict]:
+    """Join parsed rates to model ids → (resolved by canonical id, unmatched by name)."""
+    cp_index = identity.build_index(mid for mid, _, _ in cp_models)
+    name_index = identity.build_name_index((mid, name) for mid, name, _ in cp_models)
+    cp_provider = {mid: prov for mid, _, prov in cp_models}
+    cp_by_id = {mid: name for mid, name, _ in cp_models}
+
+    resolved: dict = {}
+    unmatched: dict = {}
+    for svc in SERVICES:  # deterministic file precedence
+        for r in parsed_by_service.get(svc, []):
+            if r.identity_kind == "id":
+                canonical, via, pl_name, group_ids = r.identity, "direct-id", None, [r.identity]
+                linked = cp_index.get(r.identity)
+                if linked:
+                    group_ids.append(linked)
+            else:
+                pl_name = r.identity
+                bound = aliases.get(pl_name)
+                if bound:
+                    canonical, via, group_ids = bound, "alias", [bound]
+                else:
+                    hit = name_index.get(identity.normalize_name(pl_name))
+                    if hit and hit[0]:
+                        canonical, group_ids = hit[0], list(hit[1])
+                        via = "control-plane-name"
+                    else:
+                        u = unmatched.setdefault(pl_name, {
+                            "price_list_name": pl_name,
+                            "provider": r.provider,
+                            "service_code": svc,
+                            "reason": REASON_AMBIGUOUS if hit else REASON_NO_MATCH,
+                            "grid": {},
+                        })
+                        _merge_rate({"grid": u["grid"], "effective_date": "", "provider": ""}, r)
+                        continue
+            entry = resolved.get(canonical)
+            if entry is None:
+                display = cp_by_id.get(canonical) or r.display_name
+                provider = cp_provider.get(canonical) or r.provider
+                entry = resolved[canonical] = _new_entry(display, provider, via, svc, pl_name)
+            if pl_name and not entry["price_list_name"]:
+                entry["price_list_name"] = pl_name
+            entry["extra_ids"].update(group_ids)
+            _merge_rate(entry, r)
+    return resolved, unmatched
+
+
+_VIA_ORDER = {"direct-id": 0, "alias": 1, "control-plane-name": 2}
+
+
+def _merge_canonicals(resolved: dict) -> dict:
+    """Collapse entries that describe the same model under different ids.
+
+    A mantle-priced id and its control-plane twin (e.g. `openai.gpt-oss-120b`
+    priced directly, `openai.gpt-oss-120b-1:0` from the name join) share member
+    ids after alias linking — they are one model and must be one catalog entry.
+    Strongest identity wins the canonical slot (direct-id > alias > name join);
+    grids merge first-wins in that same order.
+    """
+    owner: dict = {}
+    for canonical in sorted(
+        resolved, key=lambda c: (_VIA_ORDER.get(resolved[c]["via"], 9), len(c), c)
+    ):
+        entry = resolved[canonical]
+        members = {canonical, *entry["extra_ids"]}
+        target = next((owner[m] for m in members if m in owner), None)
+        if target is None:
+            for m in members:
+                owner[m] = canonical
+            continue
+        tgt = resolved[target]
+        for routing, tiers in entry["grid"].items():
+            for tier, ctxs in tiers.items():
+                for ctx, dirs in ctxs.items():
+                    cell = (tgt["grid"].setdefault(routing, {})
+                            .setdefault(tier, {}).setdefault(ctx, {}))
+                    for d, v in dirs.items():
+                        cell.setdefault(d, v)
+        tgt["extra_ids"].update(members)
+        if not tgt["price_list_name"] and entry["price_list_name"]:
+            tgt["price_list_name"] = entry["price_list_name"]
+        if not tgt["effective_date"] and entry["effective_date"]:
+            tgt["effective_date"] = entry["effective_date"]
+        for m in members:
+            owner[m] = target
+        del resolved[canonical]
+    return resolved
+
+
+def _materialize_keys(resolved: dict) -> dict:
+    """canonical → set of catalog keys (canonical + unambiguous alias keys).
+
+    Catalog-side expansion (Requirement 2.5): every id in the model's group is
+    expanded through `id_aliases`. A key claimed by two different models keeps
+    only its own canonical row — the alias claimants are dropped so an exact
+    settle-time lookup can never land on the wrong model (Requirement 2.7).
+    """
+    claims: dict = {}
+    for canonical, entry in resolved.items():
+        keys = set()
+        for mid in {canonical, *entry["extra_ids"]}:
+            keys.update(identity.id_aliases(mid))
+        for k in keys:
+            claims.setdefault(k, set()).add(canonical)
+    out = {c: set() for c in resolved}
+    for key, claimants in claims.items():
+        if key in resolved:
+            out[key].add(key)  # a canonical always keeps its own key
+        elif len(claimants) == 1:
+            out[next(iter(claimants))].add(key)
+        else:
+            log.info(f"alias key {key} is ambiguous between {sorted(claimants)}; not materialized")
+    return out
+
+
+# ── DynamoDB writes ──────────────────────────────────────────────────────────
+
+def _grid_to_attr(grid: dict) -> dict:
+    return {"M": {
+        routing: {"M": {
+            tier: {"M": {
+                ctx: {"M": {d: {"N": offers.decimal_str(v)} for d, v in dirs.items()}}
+                for ctx, dirs in ctxs.items()
+            }}
+            for tier, ctxs in tiers.items()
+        }}
+        for routing, tiers in grid.items()
+    }}
+
+
+def _write_published(resolved: dict, keys_by_canonical: dict, versions: dict,
+                     generation: int, now: int) -> set:
+    written = set()
+    for canonical, entry in resolved.items():
+        if not entry["grid"]:
+            continue
+        rates_attr = _grid_to_attr(entry["grid"])
+        for key in sorted(keys_by_canonical.get(canonical, {canonical})):
+            item = {
+                "pk": {"S": f"PRICING#{key}"},
+                "sk": {"S": "PUBLISHED"},
+                "model_id": {"S": key},
+                "canonical_id": {"S": canonical},
+                "display_name": {"S": str(entry["display_name"])[:128]},
+                "provider": {"S": str(entry["provider"])[:64]},
+                "source": {"S": "aws-published"},
+                "_UNIT": {"S": UNIT_PER_1M},
+                "resolved_via": {"S": entry["via"]},
+                "service_code": {"S": entry["service_code"]},
+                "region": {"S": REGION},
+                "offer_version": {"S": str(versions.get(entry["service_code"], "unknown"))},
+                "refresh_generation": {"N": str(generation)},
+                "updated_at": {"N": str(now)},
+                "rates": rates_attr,
+            }
+            if entry["effective_date"]:
+                item["effective_date"] = {"S": str(entry["effective_date"])[:64]}
+            if entry["price_list_name"]:
+                item["price_list_name"] = {"S": str(entry["price_list_name"])[:128]}
+            if key != canonical:
+                item["alias_of"] = {"S": canonical}
+            ddb.put_item(TableName=TABLE, Item=item)
+            written.add(key)
     return written
+
+
+def _write_unmatched(unmatched: dict, generation: int, now: int) -> None:
+    for name, u in unmatched.items():
+        ddb.put_item(TableName=TABLE, Item={
+            "pk": {"S": "PRICING#_UNMATCHED"},
+            "sk": {"S": str(name)[:512]},
+            "price_list_name": {"S": str(name)[:128]},
+            "provider": {"S": str(u.get("provider", ""))[:64]},
+            "service_code": {"S": str(u.get("service_code", ""))[:64]},
+            "reason": {"S": u.get("reason", REASON_NO_MATCH)},
+            "candidate_rates": _grid_to_attr(u.get("grid", {})),
+            "refresh_generation": {"N": str(generation)},
+            "updated_at": {"N": str(now)},
+        })
+
+
+def _gc(written_keys: set, current_unmatched: set, full_success: bool) -> dict:
+    """Delete rows the new pricing path can never read (design §6 step 8)."""
+    stats = {"legacy_key": 0, "provider_default": 0, "stale": 0, "stale_unmatched": 0}
+    if not written_keys:  # defensive: an empty run must never trigger deletion
+        log.warning("no keys written this run; skipping garbage collection")
+        return stats
+    items, lek = [], None
+    while True:
+        kwargs = {
+            "TableName": TABLE,
+            "FilterExpression": "begins_with(pk, :p)",
+            "ExpressionAttributeValues": {":p": {"S": "PRICING#"}},
+            "ProjectionExpression": "pk, sk",
+        }
+        if lek:
+            kwargs["ExclusiveStartKey"] = lek
+        page = ddb.scan(**kwargs)
+        items.extend(page.get("Items", []))
+        lek = page.get("LastEvaluatedKey")
+        if not lek:
+            break
+    for it in items:
+        pk = it.get("pk", {}).get("S", "")
+        sk = it.get("sk", {}).get("S", "")
+        key = pk.removeprefix("PRICING#")
+        reason = None
+        if sk == "OVERRIDE" or key in ("_ALIAS", "_CATALOG"):
+            continue  # operator-owned / marker rows — never touched (Req 10.2)
+        if key == "_UNMATCHED":
+            if full_success and sk not in current_unmatched:
+                reason = "stale_unmatched"
+        elif sk in ("PROVIDER", "DEFAULT"):
+            reason = "provider_default"  # removed source tiers (Req 9.4)
+        elif sk == "PUBLISHED":
+            if not identity.MODEL_ID_RE.match(key):
+                reason = "legacy_key"  # unreadable by the settle path (Req 10.1)
+            elif full_success and key not in written_keys:
+                reason = "stale"  # absent from a fully-successful refresh
+        if reason:
+            ddb.delete_item(TableName=TABLE, Key={"pk": {"S": pk}, "sk": {"S": sk}})
+            stats[reason] += 1
+    return stats
+
+
+def _read_generation() -> int:
+    try:
+        item = ddb.get_item(
+            TableName=TABLE,
+            Key={"pk": {"S": "PRICING#_CATALOG"}, "sk": {"S": "META"}},
+        ).get("Item") or {}
+        return int(item.get("refresh_generation", {}).get("N", "0"))
+    except Exception:  # noqa: BLE001
+        return 0
 
 
 def handler(event, context):
     started = time.time()
     try:
-        models, version = _parse()
-        if not models:
+        generation = _read_generation() + 1
+        now = int(started)
+        aliases = _load_aliases()
+
+        parsed_by_service, versions, failed = {}, {}, []
+        for svc in SERVICES:
+            try:
+                offer = _fetch_offer(svc)
+                parsed_by_service[svc], versions[svc] = offers.parse_offer(offer, REGION, svc)
+            except Exception as e:  # noqa: BLE001 — one file must not sink the rest (Req 4.6)
+                log.warning(f"{svc} offer file unavailable: {e}")
+                failed.append(svc)
+        if len(failed) == len(SERVICES):
+            raise RuntimeError("all offer files unavailable")
+
+        cp_models = _list_cp_models()
+        resolved, unmatched = _resolve(parsed_by_service, aliases, cp_models)
+        resolved = _merge_canonicals(resolved)
+        keys_by_canonical = _materialize_keys(resolved)
+
+        written_keys = _write_published(resolved, keys_by_canonical, versions, generation, now)
+        _write_unmatched(unmatched, generation, now)
+        gc_stats = _gc(written_keys, set(unmatched.keys()), full_success=not failed)
+
+        partial = bool(failed)
+        duration_ms = int((time.time() - started) * 1000)
+        ddb.put_item(TableName=TABLE, Item={
+            "pk": {"S": "PRICING#_CATALOG"},
+            "sk": {"S": "META"},
+            "offer_versions": {"M": {s: {"S": str(v)} for s, v in versions.items()}},
+            "region": {"S": REGION},
+            "refresh_generation": {"N": str(generation)},
+            "model_count": {"N": str(len(resolved))},
+            "row_count": {"N": str(len(written_keys))},
+            "unmatched_count": {"N": str(len(unmatched))},
+            "alias_count": {"N": str(len(aliases))},
+            "refreshed_at": {"N": str(now)},
+            "duration_ms": {"N": str(duration_ms)},
+            "partial": {"BOOL": partial},
+            "failed_services": {"L": [{"S": s} for s in failed]},
+        })
+
+        _metric("PricingRefreshModels", len(resolved))
+        _metric("PricingUnmatched", len(unmatched))
+        if partial:
+            # rates stay intact (GC skipped stale deletion), but the operator
+            # must see that a source went dark (Req 4.4/4.6)
             _metric("PricingRefreshFailure")
-            log.error("no models parsed from any offer file")
-            return {"ok": False, "models": 0}
-        written = _write_published(models, version)
-        provider_written = _write_provider(_fetch_provider_rates(), set(models.keys()))
-        seeded = _seed_defaults(set(models.keys()))
-        # marker row so the admin API / console can show last-refresh time + version
-        ddb.put_item(
-            TableName=TABLE,
-            Item={
-                "pk": {"S": "PRICING#_CATALOG"},
-                "sk": {"S": "META"},
-                "version": {"S": str(version)},
-                "model_count": {"N": str(written)},
-                "provider_count": {"N": str(provider_written)},
-                "seeded_defaults": {"N": str(seeded)},
-                "provider_ref": {"S": PROVIDER_PRICE_REF[:40]},
-                "region": {"S": REGION},
-                "refreshed_at": {"N": str(int(started))},
-                "duration_ms": {"N": str(int((time.time() - started) * 1000))},
-            },
-        )
-        _metric("PricingRefreshModels", written)
-        log.info(json.dumps({"ok": True, "models": written, "provider": provider_written, "seeded": seeded, "version": version}))
-        return {"ok": True, "models": written, "provider": provider_written, "seeded": seeded, "version": version}
-    except Exception as e:  # noqa: BLE001
+        summary = {
+            "ok": True, "partial": partial, "generation": generation,
+            "models": len(resolved), "rows": len(written_keys),
+            "unmatched": len(unmatched), "aliases": len(aliases),
+            "versions": versions, "failed_services": failed,
+            "gc": gc_stats, "duration_ms": duration_ms,
+        }
+        log.info(json.dumps(summary))
+        return summary
+    except Exception:
         _metric("PricingRefreshFailure")
         log.exception("pricing refresh failed")
         raise

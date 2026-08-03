@@ -156,3 +156,42 @@ rolls back automatically on a failed stabilize).
 - **Monthly** — absorb the latest release tag (`vX.Y.Z`), not `main` HEAD.
 - **Out-of-band** — on upstream security advisories (like v0.10.2's).
 - Pin **tags, not `main`**; tags are stable, reproducible targets.
+
+## Metering module: upgrading through the single-source pricing change
+
+Deployments created before the single-source pricing redesign
+(`.kiro/specs/metering-pricing-single-source/`) carry the legacy four-tier
+catalog in the metering table (`PROVIDER` / `DEFAULT` rows, display-token-keyed
+`PUBLISHED` rows like `PRICING#Claude3Haiku`, per-token override rows) and a
+bundled `config/model-prices.json` snapshot. Upgrading is one deploy plus one
+refresh; the migration is self-executing:
+
+1. **Deploy** (`./deploy.sh --metering`). The debit/interceptor/admin Lambdas
+   switch to the shared resolver immediately. Legacy rows keep pricing in the
+   deploy-to-first-refresh window: the resolver reads old per-token `PUBLISHED`
+   `tiers` shapes and per-token `OVERRIDE` rows in place.
+2. **Refresh** (console "Refresh from AWS", or wait for the daily schedule).
+   The refresher writes the model-id-keyed catalog, then garbage-collects the
+   legacy rows: display-token `PUBLISHED` keys the settle path can never read
+   are deleted unconditionally; `PROVIDER` and `DEFAULT` rows (retired source
+   tiers) are deleted; stale model-id rows are deleted only when all three
+   offer files fetched successfully. **Operator `OVERRIDE` rows and `_ALIAS`
+   bindings are never touched.**
+3. **Review the Unmatched queue** (console → Model pricing). Entries AWS
+   publishes a rate for but that no model id could be resolved to without
+   guessing land here (with their published rates); bind the ones you serve.
+4. **Announce the chargeback shift.** Settle now prices from AWS-published
+   rates instead of the retired estimate tiers, so per-model dollars move at
+   the deploy boundary (frontier Claude models drop 27-63%; some models gain
+   a real rate for the first time). Settled ledger rows are never rewritten;
+   tokens remain the cross-boundary invariant, and each row's
+   `price_map_version` records the offer version that priced it.
+
+Notes:
+- Overrides entered BEFORE the upgrade were per-token; they keep working
+  as-is. Overrides entered after are USD per 1M tokens (the console and
+  `PUT /pricing/{model}` validate the new unit).
+- `PRICE_MAP_VERSION` is gone from stack env/outputs; catalog freshness now
+  comes from `GET /config` → `pricing` (generation, counts, refreshed_at).
+- If the first refresh reports `partial: true`, an offer file was unreachable;
+  stored rates are kept and stale-row GC is skipped until a clean run.

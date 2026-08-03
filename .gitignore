@@ -70,3 +70,10 @@ console/tsconfig.tsbuildinfo
 
 # Local demo-seed manifest (scripts/seed-demo-metering-data.py writes it at runtime)
 .demo-metering-manifest.json
+
+# Local download cache for AWS Price List bulk offer files
+# (scripts/fetch-bedrock-pricing.py --cache-dir)
+.tmp-pricing/
+
+# Generated operator/finance audit export (scripts/fetch-bedrock-pricing.py)
+config/bedrock-pricing-catalog.csv

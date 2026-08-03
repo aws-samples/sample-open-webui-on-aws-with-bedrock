@@ -1,0 +1,60 @@
+{
+ "_provenance": "Trimmed from a live bedrock:ListFoundationModels response, us-east-1.",
+ "modelSummaries": [
+  {
+   "modelId": "anthropic.claude-opus-5",
+   "modelName": "Claude Opus 5",
+   "providerName": "Anthropic"
+  },
+  {
+   "modelId": "anthropic.claude-opus-4-7",
+   "modelName": "Claude Opus 4.7",
+   "providerName": "Anthropic"
+  },
+  {
+   "modelId": "anthropic.claude-opus-4-6-v1",
+   "modelName": "Claude Opus 4.6",
+   "providerName": "Anthropic"
+  },
+  {
+   "modelId": "anthropic.claude-sonnet-5",
+   "modelName": "Claude Sonnet 5",
+   "providerName": "Anthropic"
+  },
+  {
+   "modelId": "anthropic.claude-sonnet-4-20250514-v1:0",
+   "modelName": "Claude Sonnet 4",
+   "providerName": "Anthropic"
+  },
+  {
+   "modelId": "anthropic.claude-haiku-4-5-20251001-v1:0",
+   "modelName": "Claude Haiku 4.5",
+   "providerName": "Anthropic"
+  },
+  {
+   "modelId": "anthropic.claude-3-haiku-20240307-v1:0",
+   "modelName": "Claude 3 Haiku",
+   "providerName": "Anthropic"
+  },
+  {
+   "modelId": "anthropic.claude-3-haiku-20240307-v1:0:48k",
+   "modelName": "Claude 3 Haiku",
+   "providerName": "Anthropic"
+  },
+  {
+   "modelId": "anthropic.claude-3-haiku-20240307-v1:0:200k",
+   "modelName": "Claude 3 Haiku",
+   "providerName": "Anthropic"
+  },
+  {
+   "modelId": "openai.gpt-oss-120b-1:0",
+   "modelName": "gpt-oss-120b",
+   "providerName": "OpenAI"
+  },
+  {
+   "modelId": "qwen.qwen3-32b",
+   "modelName": "Qwen3 32B (dense)",
+   "providerName": "Qwen"
+  }
+ ]
+}

@@ -19,41 +19,33 @@ from this table's DynamoDB Stream.
 Idempotency key preference (design §4.1): provider response id →
 (chat_id, message_id) → caller-supplied estimate key.
 
-Environment: TABLE (single-table name), PRICE_MAP (JSON string; from
-config/model-prices.json), SNS_TOPIC (threshold alerts), SOFT_DEFAULT/HARD_DEFAULT.
+Environment: TABLE (single-table name), SNS_TOPIC (threshold alerts),
+SOFT_DEFAULT/HARD_DEFAULT. Rates come from the DynamoDB pricing catalog
+through the shared resolver — no bundled snapshot (Requirement 8.2).
 """
 
 import datetime
 import json
 import logging
 import os
+import sys
 import time
 
 import boto3
 from botocore.exceptions import ClientError
 
+_HERE = os.path.dirname(os.path.abspath(__file__))
+for _p in (_HERE, os.path.join(_HERE, "..")):  # Lambda task root / repo tree
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+from pricing.identity import parse_model_ref  # noqa: E402
+from pricing.resolver import resolve_rate, unwrap_item  # noqa: E402
+
 log = logging.getLogger()
 log.setLevel(logging.INFO)
 
 TABLE = os.environ["TABLE"]
-
-
-def _load_price_map() -> dict:
-    """Env override for tests; bundled model-prices.json in the deploy asset
-    (the full map is ~17 KB — over Lambda's 4 KB env ceiling)."""
-    if os.environ.get("PRICE_MAP"):
-        return json.loads(os.environ["PRICE_MAP"])
-    try:
-        here = os.path.dirname(os.path.abspath(__file__))
-        with open(os.path.join(here, "model-prices.json")) as f:
-            raw = json.load(f)
-        return {"version": raw.get("version"), "models": {**raw.get("models", {}), **raw.get("overrides", {})}}
-    except (OSError, ValueError):
-        return {}
-
-
-PRICE_MAP = _load_price_map()
-PRICE_MAP_VERSION = PRICE_MAP.get("version", "unversioned")
 SNS_TOPIC = os.environ.get("SNS_TOPIC", "")
 CANARY_SUBS = set(filter(None, os.environ.get("CANARY_SUBS", "").split(",")))
 # Same precedence list the interceptor uses (config/metering-groups.json order)
@@ -72,20 +64,20 @@ sns = boto3.client("sns") if SNS_TOPIC else None
 cw = boto3.client("cloudwatch")
 
 # ── Live pricing catalog (DynamoDB) ──────────────────────────────────────────
-# Rate precedence (docs/plans/metering-admin-console/02-PRICING-INVESTIGATION.md):
-#   operator OVERRIDE row → AWS-PUBLISHED row (refreshed daily, no redeploy) →
-#   bundled model-prices.json (deploy-time snapshot) → unpriced.
+# Rate precedence is exactly: operator OVERRIDE row → AWS-PUBLISHED row →
+# unpriced (Requirement 9.3), resolved by the shared pricing resolver so the
+# admission estimate and this settle path can never disagree (Requirement 8.4).
 # Catalog rows are cached per-container so the hot settle path stays cheap; the
 # published tier is refreshed daily so a 5-min TTL is plenty fresh.
 _CATALOG_TTL = int(os.environ.get("PRICING_CACHE_TTL", "300"))
-_catalog_cache: dict = {}  # model -> (fetched_ts, {"override": {...}|None, "published": {...}|None})
+_catalog_cache: dict = {}  # model key -> (fetched_ts, {"override": {...}|None, "published": {...}|None})
 
 
 def _catalog_entry(model: str) -> dict:
     hit = _catalog_cache.get(model)
     if hit and time.time() - hit[0] < _CATALOG_TTL:
         return hit[1]
-    entry = {"override": None, "published": None, "provider": None, "default": None}
+    entry = {"override": None, "published": None}
     try:
         resp = ddb.batch_get_item(
             RequestItems={
@@ -93,8 +85,6 @@ def _catalog_entry(model: str) -> dict:
                     "Keys": [
                         {"pk": {"S": f"PRICING#{model}"}, "sk": {"S": "OVERRIDE"}},
                         {"pk": {"S": f"PRICING#{model}"}, "sk": {"S": "PUBLISHED"}},
-                        {"pk": {"S": f"PRICING#{model}"}, "sk": {"S": "PROVIDER"}},
-                        {"pk": {"S": f"PRICING#{model}"}, "sk": {"S": "DEFAULT"}},
                     ]
                 }
             }
@@ -102,72 +92,17 @@ def _catalog_entry(model: str) -> dict:
         for it in resp.get("Responses", {}).get(TABLE, []):
             sk = it.get("sk", {}).get("S", "")
             if sk == "OVERRIDE":
-                entry["override"] = it
+                entry["override"] = unwrap_item(it)
             elif sk == "PUBLISHED":
-                entry["published"] = it
-            elif sk == "PROVIDER":
-                entry["provider"] = it
-            elif sk == "DEFAULT":
-                entry["default"] = it
+                entry["published"] = unwrap_item(it)
     except Exception as e:  # noqa: BLE001 — catalog read must never break settlement
         log.warning(f"pricing catalog read failed for {model}: {e}")
     _catalog_cache[model] = (time.time(), entry)
     return entry
 
 
-def _rate_from_row(row: dict, direction: str, tier: str):
-    """Pull a per-token rate from a PRICING# row (override or published).
-    Override rows carry flat input/output; published rows also carry a tiers map."""
-    if not row:
-        return None
-    # tier-specific rate from the tiers JSON (published rows), else flat input/output
-    tiers_raw = row.get("tiers", {}).get("S")
-    if tiers_raw:
-        try:
-            tiers = json.loads(tiers_raw)
-            v = (tiers.get(tier) or tiers.get("standard") or {}).get(direction)
-            if v is not None:
-                return float(v)
-        except (ValueError, TypeError):
-            pass
-    v = row.get(direction, {}).get("N")
-    return float(v) if v is not None else None
-
-
 def _month_window(ts: int) -> str:
     return datetime.datetime.fromtimestamp(ts, datetime.timezone.utc).strftime("%Y-%m")
-
-
-def _rate(model: str, direction: str, tier: str = "standard"):
-    """Return ($/token, source) for (model, direction, tier), or (None, "unpriced").
-
-    Precedence: operator override → AWS-published → provider-list → seeded
-    default-override → bundled file → unpriced. AWS-published is authoritative
-    (it is the invoice) where it has a SKU; the provider-list rows (real
-    Anthropic/OpenAI public rates via the pinned LiteLLM feed) fill the frontier
-    gap AWS hasn't caught up to; the seeded default is a last-resort net.
-    Unpriced models still record TOKENS (the invariant), price at 0, and emit an
-    UnpricedModel metric so operators enter a rate rather than us guessing.
-    """
-    cat = _catalog_entry(model)
-    v = _rate_from_row(cat.get("override"), direction, tier)
-    if v is not None:
-        return v, "override"
-    v = _rate_from_row(cat.get("published"), direction, tier)
-    if v is not None:
-        return v, "aws-published"
-    v = _rate_from_row(cat.get("provider"), direction, tier)
-    if v is not None:
-        return v, "provider-list"
-    v = _rate_from_row(cat.get("default"), direction, tier)
-    if v is not None:
-        return v, "default-override"
-    entry = (PRICE_MAP.get("models") or {}).get(model)
-    if entry:
-        v = (entry.get(tier) or entry.get("standard") or {}).get(direction)
-        if v is not None:
-            return float(v), "bundled"
-    return None, "unpriced"
 
 
 def _idempotency_key(d: dict) -> str:
@@ -199,24 +134,38 @@ def _settle(detail: dict):
     sub = detail.get("sub", "unknown")
     ts = int(detail.get("ts", time.time()))
     window = _month_window(ts)
-    model = detail.get("model", "unknown")
-    # model ids arrive gateway-qualified ("bedrock/…") or pipe-prefixed ("metering.…") — normalize
-    model = model.split("/", 1)[-1]
-    if "." in model and model.split(".", 1)[0] in ("gateway_anthropic", "metering"):
-        model = model.split(".", 1)[1]
+    # model ids arrive gateway-qualified ("bedrock/…"), pipe-prefixed
+    # ("metering.…"), and possibly inference-profile-prefixed ("global.…") —
+    # parse to the catalog key + the routing mode the request actually used
+    # (Requirements 2.8, 7.1). Scope variants share one key (Requirement 2.9).
+    ref = parse_model_ref(detail.get("model", "unknown"))
+    model, routing = ref.key, ref.routing
     tier = detail.get("tier", "standard")
+    context = detail.get("context", "default")
     tin = int(detail.get("input_tokens", 0))
     tout = int(detail.get("output_tokens", 0))
     tcached = int(detail.get("cached_tokens", 0))
 
-    rin, rin_src = _rate(model, "input", tier)
-    rout, rout_src = _rate(model, "output", tier)
+    entry = _catalog_entry(model)
+    res_in = resolve_rate(entry, "input", tier=tier, routing=routing, context=context)
+    res_out = resolve_rate(entry, "output", tier=tier, routing=routing, context=context)
+    rin, rout = res_in.per_token(), res_out.per_token()
     unpriced = rin is None or rout is None
     usd = 0.0 if unpriced else round(tin * rin + tout * rout, 8)
-    # pricing source drives the ledger's price_source (override|aws-published|bundled|unpriced)
-    price_source = "unpriced" if unpriced else (rin_src if rin_src == rout_src else rin_src or rout_src)
+    # pricing source drives the ledger's price_source (override|aws-published|unpriced)
+    price_source = "unpriced" if unpriced else (
+        res_in.source if res_in.source == res_out.source else res_in.source or res_out.source)
+    # the version stamp is the offer version of the row that supplied the rate
+    # (or the override stamp) — truthful provenance per row (Requirement 8.3)
+    price_version = (res_in.version or res_out.version or "none") if not unpriced else "none"
+    rate_fallback = bool(res_in.fallback or res_out.fallback)
     if unpriced:
         _metric("UnpricedModel", dims={"Model": model[:64]})
+    else:
+        if res_in.routing_fallback or res_out.routing_fallback:
+            _metric("PricingRoutingFallback", dims={"Model": model[:64]})
+        if res_in.tier_fallback or res_out.tier_fallback:
+            _metric("PricingTierFallback", dims={"Model": model[:64]})
 
     key = _idempotency_key(detail)
     day = datetime.datetime.fromtimestamp(ts, datetime.timezone.utc).strftime("%Y-%m-%d")
@@ -288,14 +237,21 @@ def _settle(detail: dict):
         "tokens_cached": {"N": str(tcached)},
         "rate_in": {"N": str(rin or 0)},
         "rate_out": {"N": str(rout or 0)},
-        "price_map_version": {"S": PRICE_MAP_VERSION},
+        "price_map_version": {"S": price_version},
         "price_source": {"S": price_source},
+        "routing": {"S": routing},
         "usd": {"N": str(usd)},
         "unpriced": {"BOOL": bool(unpriced)},
         "state": {"S": "SETTLED"},
         "source": {"S": detail.get("source", "FILTER")},
         "ttl": {"N": str(ts + 15 * 30 * 24 * 3600)},  # ~15 months
     }
+    if rate_fallback:
+        # tier/routing/context substitution occurred — auditable (Req 7.9)
+        ledger_item["rate_fallback"] = {"BOOL": True}
+        matched = res_in.matched_routing or res_out.matched_routing
+        if matched and matched != routing:
+            ledger_item["matched_routing"] = {"S": matched}
     if unpriced and est_used and est_usd > 0:
         # non-authoritative gateway estimate, for display only (never summed into used_usd)
         ledger_item["usd_estimate"] = {"N": str(round(est_usd, 8))}

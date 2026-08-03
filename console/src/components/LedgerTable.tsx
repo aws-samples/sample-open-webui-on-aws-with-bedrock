@@ -19,6 +19,28 @@ export function LedgerTable(props: {
     { id: 'model', header: 'Model', cell: (c: LedgerCall) => c.model ?? '–' },
     { id: 'lane', header: 'Lane', cell: (c: LedgerCall) => <Badge color="grey">{c.lane ?? '–'}</Badge>, width: 130 },
     {
+      id: 'routing',
+      header: 'Routing',
+      // derived per request (Req 7.10); a rate_fallback flag means the exact
+      // request shape had no published rate and a documented substitution priced it
+      cell: (c: LedgerCall) =>
+        c.routing ? (
+          <>
+            <Badge color={c.routing === 'global' ? 'blue' : 'grey'}>{c.routing.replace('_', '-')}</Badge>
+            {c.rate_fallback && (
+              <Box display="inline" margin={{ left: 'xxs' }}>
+                <StatusIndicator type="warning">
+                  {c.matched_routing ? `priced ${c.matched_routing.replace('_', '-')}` : 'rate fallback'}
+                </StatusIndicator>
+              </Box>
+            )}
+          </>
+        ) : (
+          '–'
+        ),
+      width: 150,
+    },
+    {
       id: 'tok',
       header: 'Tokens in / out',
       cell: (c: LedgerCall) => `${tokens(c.tokens_in)} / ${tokens(c.tokens_out)}`,

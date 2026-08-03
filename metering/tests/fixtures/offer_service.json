@@ -1,0 +1,385 @@
+{
+ "_provenance": "Trimmed from the live AmazonBedrockService us-east-1 offer file (version 20260729235847); values are real published rates.",
+ "formatVersion": "v1.0",
+ "offerCode": "AmazonBedrockService",
+ "version": "20260729235847",
+ "publicationDate": "2026-07-29T23:58:47Z",
+ "products": {
+  "TXGG79S3YQ6QCXR8": {
+   "sku": "TXGG79S3YQ6QCXR8",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrockService",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-Claude4Sonnet-input-tokens-cross-region-global-batch",
+    "operation": "",
+    "inferenceType": "Input tokens",
+    "model": "Claude Sonnet 4",
+    "provider": "Anthropic",
+    "regionCode": "us-east-1",
+    "servicename": "Amazon Bedrock Service"
+   }
+  },
+  "SSEU5Z9WDFGM52J3": {
+   "sku": "SSEU5Z9WDFGM52J3",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrockService",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-Claude4Sonnet-cache-write-input-token-count-long-context-cross-region-global",
+    "operation": "",
+    "featuretype": "Prompt cache write",
+    "inferenceType": "Input token count long context",
+    "model": "Claude Sonnet 4",
+    "provider": "Anthropic",
+    "regionCode": "us-east-1",
+    "servicename": "Amazon Bedrock Service"
+   }
+  },
+  "8MYS52GEG8CYK9SM": {
+   "sku": "8MYS52GEG8CYK9SM",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrockService",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-Claude4Sonnet-output-tokens-long-context-cross-region-global",
+    "operation": "",
+    "inferenceType": "Output tokens long context",
+    "model": "Claude Sonnet 4",
+    "provider": "Anthropic",
+    "regionCode": "us-east-1",
+    "servicename": "Amazon Bedrock Service"
+   }
+  },
+  "DFNKC625U62DCYN7": {
+   "sku": "DFNKC625U62DCYN7",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrockService",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-Claude4Sonnet-cache-read-input-token-count-cross-region-global",
+    "operation": "",
+    "featuretype": "Prompt cache read",
+    "model": "Claude Sonnet 4",
+    "provider": "Anthropic",
+    "regionCode": "us-east-1",
+    "servicename": "Amazon Bedrock Service"
+   }
+  },
+  "F2GQHT6KUA5NDVJD": {
+   "sku": "F2GQHT6KUA5NDVJD",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrockService",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-Claude4Sonnet-input-tokens-cross-region-global",
+    "operation": "",
+    "inferenceType": "Input tokens",
+    "model": "Claude Sonnet 4",
+    "provider": "Anthropic",
+    "regionCode": "us-east-1",
+    "servicename": "Amazon Bedrock Service"
+   }
+  },
+  "V7EV5REESBYGJFPM": {
+   "sku": "V7EV5REESBYGJFPM",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrockService",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-Claude4Sonnet-cache-write-input-token-count-cross-region-global",
+    "operation": "",
+    "featuretype": "Prompt cache write",
+    "model": "Claude Sonnet 4",
+    "provider": "Anthropic",
+    "regionCode": "us-east-1",
+    "servicename": "Amazon Bedrock Service"
+   }
+  },
+  "9QJ7X5H6DPWWPD2K": {
+   "sku": "9QJ7X5H6DPWWPD2K",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrockService",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-Claude4Sonnet-cache-read-input-token-count-long-context-cross-region-global",
+    "operation": "",
+    "featuretype": "Prompt cache read",
+    "inferenceType": "Input token count long context",
+    "model": "Claude Sonnet 4",
+    "provider": "Anthropic",
+    "regionCode": "us-east-1",
+    "servicename": "Amazon Bedrock Service"
+   }
+  },
+  "WP8VBGCYW2RUTTVN": {
+   "sku": "WP8VBGCYW2RUTTVN",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrockService",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-Claude4Sonnet-output-tokens-cross-region-global-batch",
+    "operation": "",
+    "inferenceType": "Output tokens",
+    "model": "Claude Sonnet 4",
+    "provider": "Anthropic",
+    "regionCode": "us-east-1",
+    "servicename": "Amazon Bedrock Service"
+   }
+  },
+  "9YVUMTE5DSW2U3YD": {
+   "sku": "9YVUMTE5DSW2U3YD",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrockService",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-Claude4Sonnet-input-tokens-long-context-cross-region-global",
+    "operation": "",
+    "inferenceType": "Input tokens long context",
+    "model": "Claude Sonnet 4",
+    "provider": "Anthropic",
+    "regionCode": "us-east-1",
+    "servicename": "Amazon Bedrock Service"
+   }
+  },
+  "TV7N8ENQSUSUMJ54": {
+   "sku": "TV7N8ENQSUSUMJ54",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrockService",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-Claude4Sonnet-output-tokens-cross-region-global",
+    "operation": "",
+    "inferenceType": "Output tokens",
+    "model": "Claude Sonnet 4",
+    "provider": "Anthropic",
+    "regionCode": "us-east-1",
+    "servicename": "Amazon Bedrock Service"
+   }
+  }
+ },
+ "terms": {
+  "OnDemand": {
+   "TXGG79S3YQ6QCXR8": {
+    "TXGG79S3YQ6QCXR8.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "TXGG79S3YQ6QCXR8",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "TXGG79S3YQ6QCXR8.JRTCKXETXF.6YS6EN2CT7": {
+       "rateCode": "TXGG79S3YQ6QCXR8.JRTCKXETXF.6YS6EN2CT7",
+       "description": "$0.0015 per 1K token for Claude4Sonnet-input-tokens-cross-region-global-batch in US East (N. Virginia)",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0015000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "SSEU5Z9WDFGM52J3": {
+    "SSEU5Z9WDFGM52J3.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "SSEU5Z9WDFGM52J3",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "SSEU5Z9WDFGM52J3.JRTCKXETXF.6YS6EN2CT7": {
+       "rateCode": "SSEU5Z9WDFGM52J3.JRTCKXETXF.6YS6EN2CT7",
+       "description": "$0.0075 per 1K token for Claude4Sonnet-cache-write-input-token-count-long-context-cross-region-global in US East (N. Virginia)",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0075000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "8MYS52GEG8CYK9SM": {
+    "8MYS52GEG8CYK9SM.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "8MYS52GEG8CYK9SM",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "8MYS52GEG8CYK9SM.JRTCKXETXF.6YS6EN2CT7": {
+       "rateCode": "8MYS52GEG8CYK9SM.JRTCKXETXF.6YS6EN2CT7",
+       "description": "$0.0225 per 1K token for Claude4Sonnet-output-tokens-long-context-cross-region-global in US East (N. Virginia)",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0225000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "DFNKC625U62DCYN7": {
+    "DFNKC625U62DCYN7.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "DFNKC625U62DCYN7",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "DFNKC625U62DCYN7.JRTCKXETXF.6YS6EN2CT7": {
+       "rateCode": "DFNKC625U62DCYN7.JRTCKXETXF.6YS6EN2CT7",
+       "description": "$0.0003 per 1K token for Claude4Sonnet-cache-read-input-token-count-cross-region-global in US East (N. Virginia)",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0003000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "F2GQHT6KUA5NDVJD": {
+    "F2GQHT6KUA5NDVJD.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "F2GQHT6KUA5NDVJD",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "F2GQHT6KUA5NDVJD.JRTCKXETXF.6YS6EN2CT7": {
+       "rateCode": "F2GQHT6KUA5NDVJD.JRTCKXETXF.6YS6EN2CT7",
+       "description": "$0.003 per 1K token for Claude4Sonnet-input-tokens-cross-region-global in US East (N. Virginia)",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0030000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "V7EV5REESBYGJFPM": {
+    "V7EV5REESBYGJFPM.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "V7EV5REESBYGJFPM",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "V7EV5REESBYGJFPM.JRTCKXETXF.6YS6EN2CT7": {
+       "rateCode": "V7EV5REESBYGJFPM.JRTCKXETXF.6YS6EN2CT7",
+       "description": "$0.00375 per 1K token for Claude4Sonnet-cache-write-input-token-count-cross-region-global in US East (N. Virginia)",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0037500000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "9QJ7X5H6DPWWPD2K": {
+    "9QJ7X5H6DPWWPD2K.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "9QJ7X5H6DPWWPD2K",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "9QJ7X5H6DPWWPD2K.JRTCKXETXF.6YS6EN2CT7": {
+       "rateCode": "9QJ7X5H6DPWWPD2K.JRTCKXETXF.6YS6EN2CT7",
+       "description": "$0.0006 per 1K token for Claude4Sonnet-cache-read-input-token-count-long-context-cross-region-global in US East (N. Virginia)",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0006000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "WP8VBGCYW2RUTTVN": {
+    "WP8VBGCYW2RUTTVN.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "WP8VBGCYW2RUTTVN",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "WP8VBGCYW2RUTTVN.JRTCKXETXF.6YS6EN2CT7": {
+       "rateCode": "WP8VBGCYW2RUTTVN.JRTCKXETXF.6YS6EN2CT7",
+       "description": "$0.0075 per 1K token for Claude4Sonnet-output-tokens-cross-region-global-batch in US East (N. Virginia)",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0075000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "9YVUMTE5DSW2U3YD": {
+    "9YVUMTE5DSW2U3YD.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "9YVUMTE5DSW2U3YD",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "9YVUMTE5DSW2U3YD.JRTCKXETXF.6YS6EN2CT7": {
+       "rateCode": "9YVUMTE5DSW2U3YD.JRTCKXETXF.6YS6EN2CT7",
+       "description": "$0.006 per 1K token for Claude4Sonnet-input-tokens-long-context-cross-region-global in US East (N. Virginia)",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0060000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "TV7N8ENQSUSUMJ54": {
+    "TV7N8ENQSUSUMJ54.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "TV7N8ENQSUSUMJ54",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "TV7N8ENQSUSUMJ54.JRTCKXETXF.6YS6EN2CT7": {
+       "rateCode": "TV7N8ENQSUSUMJ54.JRTCKXETXF.6YS6EN2CT7",
+       "description": "$0.015 per 1K token for Claude4Sonnet-output-tokens-cross-region-global in US East (N. Virginia)",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0150000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   }
+  }
+ }
+}

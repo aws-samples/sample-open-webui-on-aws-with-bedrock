@@ -1,0 +1,963 @@
+{
+ "_provenance": "Trimmed from the live AmazonBedrock us-east-1 offer file (version 20260723233555); values are real published rates.",
+ "formatVersion": "v1.0",
+ "offerCode": "AmazonBedrock",
+ "version": "20260723233555",
+ "publicationDate": "2026-07-23T23:35:55Z",
+ "products": {
+  "5J9P4QMN3ZUCARJZ": {
+   "sku": "5J9P4QMN3ZUCARJZ",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-gpt-oss-120b-input-tokens-flex",
+    "operation": "",
+    "feature": "On-demand Inference",
+    "inferenceType": "Input tokens flex",
+    "model": "gpt-oss-120b",
+    "provider": "OpenAI",
+    "regionCode": "us-east-1",
+    "servicename": "Amazon Bedrock"
+   }
+  },
+  "P9G2AVNMEZE36NEN": {
+   "sku": "P9G2AVNMEZE36NEN",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-gpt-oss-120b-input-tokens-batch",
+    "operation": "",
+    "feature": "Batch Inference",
+    "inferenceType": "Input tokens",
+    "model": "gpt-oss-120b",
+    "provider": "OpenAI",
+    "regionCode": "us-east-1",
+    "servicename": "Amazon Bedrock"
+   }
+  },
+  "RNWRB7VQHHV8PKQ3": {
+   "sku": "RNWRB7VQHHV8PKQ3",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-gpt-oss-120b-input-tokens-priority",
+    "operation": "",
+    "feature": "On-demand Inference",
+    "inferenceType": "Input tokens priority",
+    "model": "gpt-oss-120b",
+    "provider": "OpenAI",
+    "regionCode": "us-east-1",
+    "servicename": "Amazon Bedrock"
+   }
+  },
+  "ZFCJE4XEZQ3864TH": {
+   "sku": "ZFCJE4XEZQ3864TH",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-openai.gpt-oss-120b-mantle-output-tokens-priority",
+    "operation": "",
+    "inferenceType": "Output tokens priority",
+    "model": "gpt-oss-120b",
+    "provider": "OpenAI",
+    "regionCode": "us-east-1",
+    "service_tier": "priority",
+    "servicename": "Amazon Bedrock"
+   }
+  },
+  "7C997NSFX4SFYQ7J": {
+   "sku": "7C997NSFX4SFYQ7J",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-openai.gpt-oss-120b-mantle-input-tokens-priority",
+    "operation": "",
+    "inferenceType": "Input tokens priority",
+    "model": "gpt-oss-120b",
+    "provider": "OpenAI",
+    "regionCode": "us-east-1",
+    "service_tier": "priority",
+    "servicename": "Amazon Bedrock"
+   }
+  },
+  "JAXT66QA865BYKAA": {
+   "sku": "JAXT66QA865BYKAA",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-gpt-oss-120b-output-tokens-priority",
+    "operation": "",
+    "feature": "On-demand Inference",
+    "inferenceType": "Output tokens priority",
+    "model": "gpt-oss-120b",
+    "provider": "OpenAI",
+    "regionCode": "us-east-1",
+    "servicename": "Amazon Bedrock"
+   }
+  },
+  "W28SH4ZK47NY7JZ8": {
+   "sku": "W28SH4ZK47NY7JZ8",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-openai.gpt-oss-120b-mantle-output-tokens-flex",
+    "operation": "",
+    "inferenceType": "Output tokens flex",
+    "model": "gpt-oss-120b",
+    "provider": "OpenAI",
+    "regionCode": "us-east-1",
+    "service_tier": "flex",
+    "servicename": "Amazon Bedrock"
+   }
+  },
+  "U6WAJF7G3M4RQS3M": {
+   "sku": "U6WAJF7G3M4RQS3M",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-qwen.qwen3-32b-mantle-input-tokens-standard",
+    "operation": "",
+    "inferenceType": "Input tokens",
+    "model": "Qwen3 32B",
+    "provider": "Qwen",
+    "regionCode": "us-east-1",
+    "service_tier": "standard",
+    "servicename": "Amazon Bedrock"
+   }
+  },
+  "KGHQD8ZHB5468Z38": {
+   "sku": "KGHQD8ZHB5468Z38",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-gpt-oss-120b-output-tokens",
+    "operation": "",
+    "feature": "On-demand Inference",
+    "inferenceType": "Output tokens",
+    "model": "gpt-oss-120b",
+    "provider": "OpenAI",
+    "regionCode": "us-east-1",
+    "servicename": "Amazon Bedrock"
+   }
+  },
+  "FAEVCZ6YAW9RCRVH": {
+   "sku": "FAEVCZ6YAW9RCRVH",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-openai.gpt-oss-120b-mantle-output-tokens-batch",
+    "operation": "",
+    "inferenceType": "output tokens batch",
+    "model": "gpt-oss-120b",
+    "provider": "OpenAI",
+    "regionCode": "us-east-1",
+    "service_tier": "batch",
+    "servicename": "Amazon Bedrock"
+   }
+  },
+  "FSY9M8QBH2ZWDM7N": {
+   "sku": "FSY9M8QBH2ZWDM7N",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-qwen.qwen3-32b-mantle-input-tokens-flex",
+    "operation": "",
+    "inferenceType": "Input tokens flex",
+    "model": "Qwen3 32B",
+    "provider": "Qwen",
+    "regionCode": "us-east-1",
+    "service_tier": "flex",
+    "servicename": "Amazon Bedrock"
+   }
+  },
+  "VYRF2H4GDT7CVF8M": {
+   "sku": "VYRF2H4GDT7CVF8M",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-openai.gpt-oss-120b-mantle-input-tokens-batch",
+    "operation": "",
+    "inferenceType": "input tokens batch",
+    "model": "gpt-oss-120b",
+    "provider": "OpenAI",
+    "regionCode": "us-east-1",
+    "service_tier": "batch",
+    "servicename": "Amazon Bedrock"
+   }
+  },
+  "2YZHYWW8MKSHW6AU": {
+   "sku": "2YZHYWW8MKSHW6AU",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-gpt-oss-120b-output-tokens-flex",
+    "operation": "",
+    "feature": "On-demand Inference",
+    "inferenceType": "Output tokens flex",
+    "model": "gpt-oss-120b",
+    "provider": "OpenAI",
+    "regionCode": "us-east-1",
+    "servicename": "Amazon Bedrock"
+   }
+  },
+  "GZENDQ3GJDGZWT8X": {
+   "sku": "GZENDQ3GJDGZWT8X",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-qwen.qwen3-32b-mantle-output-tokens-flex",
+    "operation": "",
+    "inferenceType": "Output tokens flex",
+    "model": "Qwen3 32B",
+    "provider": "Qwen",
+    "regionCode": "us-east-1",
+    "service_tier": "flex",
+    "servicename": "Amazon Bedrock"
+   }
+  },
+  "UEJ6RRGVWV8HT4KC": {
+   "sku": "UEJ6RRGVWV8HT4KC",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-openai.gpt-oss-120b-mantle-output-tokens-standard",
+    "operation": "",
+    "inferenceType": "Output tokens",
+    "model": "gpt-oss-120b",
+    "provider": "OpenAI",
+    "regionCode": "us-east-1",
+    "service_tier": "standard",
+    "servicename": "Amazon Bedrock"
+   }
+  },
+  "UFDY28GAJ75BETAE": {
+   "sku": "UFDY28GAJ75BETAE",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-openai.gpt-oss-120b-mantle-input-tokens-flex",
+    "operation": "",
+    "inferenceType": "Input tokens flex",
+    "model": "gpt-oss-120b",
+    "provider": "OpenAI",
+    "regionCode": "us-east-1",
+    "service_tier": "flex",
+    "servicename": "Amazon Bedrock"
+   }
+  },
+  "KMZFVEBPVFAP5FUF": {
+   "sku": "KMZFVEBPVFAP5FUF",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-Claude3Haiku-input-tokens",
+    "operation": "",
+    "feature": "On-demand Inference",
+    "inferenceType": "Input tokens",
+    "model": "Claude 3 Haiku",
+    "provider": "Anthropic",
+    "regionCode": "us-east-1",
+    "servicename": "Amazon Bedrock"
+   }
+  },
+  "AQEZQAY2B27EKGDJ": {
+   "sku": "AQEZQAY2B27EKGDJ",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-gpt-oss-120b-output-tokens-batch",
+    "operation": "",
+    "feature": "Batch Inference",
+    "inferenceType": "Output tokens",
+    "model": "gpt-oss-120b",
+    "provider": "OpenAI",
+    "regionCode": "us-east-1",
+    "servicename": "Amazon Bedrock"
+   }
+  },
+  "K7EPD38WB9WRZSJH": {
+   "sku": "K7EPD38WB9WRZSJH",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-openai.gpt-oss-120b-mantle-input-tokens-standard",
+    "operation": "",
+    "inferenceType": "Input tokens",
+    "model": "gpt-oss-120b",
+    "provider": "OpenAI",
+    "regionCode": "us-east-1",
+    "service_tier": "standard",
+    "servicename": "Amazon Bedrock"
+   }
+  },
+  "X3UFBFJVAKNF3XC9": {
+   "sku": "X3UFBFJVAKNF3XC9",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-qwen.qwen3-32b-mantle-output-tokens-batch",
+    "operation": "",
+    "inferenceType": "output tokens batch",
+    "model": "Qwen3 32B",
+    "provider": "Qwen",
+    "regionCode": "us-east-1",
+    "service_tier": "batch",
+    "servicename": "Amazon Bedrock"
+   }
+  },
+  "D9PT9YK5C3RYGBPQ": {
+   "sku": "D9PT9YK5C3RYGBPQ",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-qwen.qwen3-32b-mantle-output-tokens-priority",
+    "operation": "",
+    "inferenceType": "Output tokens priority",
+    "model": "Qwen3 32B",
+    "provider": "Qwen",
+    "regionCode": "us-east-1",
+    "service_tier": "priority",
+    "servicename": "Amazon Bedrock"
+   }
+  },
+  "Q2U4FFKKTW34QVFG": {
+   "sku": "Q2U4FFKKTW34QVFG",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-gpt-oss-120b-input-tokens",
+    "operation": "",
+    "feature": "On-demand Inference",
+    "inferenceType": "Input tokens",
+    "model": "gpt-oss-120b",
+    "provider": "OpenAI",
+    "regionCode": "us-east-1",
+    "servicename": "Amazon Bedrock"
+   }
+  },
+  "K7YQKJ7A98DK259W": {
+   "sku": "K7YQKJ7A98DK259W",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-qwen.qwen3-32b-mantle-input-tokens-batch",
+    "operation": "",
+    "inferenceType": "input tokens batch",
+    "model": "Qwen3 32B",
+    "provider": "Qwen",
+    "regionCode": "us-east-1",
+    "service_tier": "batch",
+    "servicename": "Amazon Bedrock"
+   }
+  },
+  "EYCMZSK8KR8FFJRP": {
+   "sku": "EYCMZSK8KR8FFJRP",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-qwen.qwen3-32b-mantle-input-tokens-priority",
+    "operation": "",
+    "inferenceType": "Input tokens priority",
+    "model": "Qwen3 32B",
+    "provider": "Qwen",
+    "regionCode": "us-east-1",
+    "service_tier": "priority",
+    "servicename": "Amazon Bedrock"
+   }
+  },
+  "7TG6VJR3W3D8EKG8": {
+   "sku": "7TG6VJR3W3D8EKG8",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-qwen.qwen3-32b-mantle-output-tokens-standard",
+    "operation": "",
+    "inferenceType": "Output tokens",
+    "model": "Qwen3 32B",
+    "provider": "Qwen",
+    "regionCode": "us-east-1",
+    "service_tier": "standard",
+    "servicename": "Amazon Bedrock"
+   }
+  }
+ },
+ "terms": {
+  "OnDemand": {
+   "5J9P4QMN3ZUCARJZ": {
+    "5J9P4QMN3ZUCARJZ.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "5J9P4QMN3ZUCARJZ",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "5J9P4QMN3ZUCARJZ.JRTCKXETXF.6YS6EN2CT7": {
+       "rateCode": "5J9P4QMN3ZUCARJZ.JRTCKXETXF.6YS6EN2CT7",
+       "description": "$0.000075 per 1K input tokens flex for gpt-oss-120b in US East (N. Virginia)",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0000750000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "P9G2AVNMEZE36NEN": {
+    "P9G2AVNMEZE36NEN.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "P9G2AVNMEZE36NEN",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "P9G2AVNMEZE36NEN.JRTCKXETXF.6YS6EN2CT7": {
+       "rateCode": "P9G2AVNMEZE36NEN.JRTCKXETXF.6YS6EN2CT7",
+       "description": "$0.000075 per 1K input tokens for gpt-oss-120b in US East (N. Virginia) for Batch",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0000750000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "RNWRB7VQHHV8PKQ3": {
+    "RNWRB7VQHHV8PKQ3.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "RNWRB7VQHHV8PKQ3",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "RNWRB7VQHHV8PKQ3.JRTCKXETXF.6YS6EN2CT7": {
+       "rateCode": "RNWRB7VQHHV8PKQ3.JRTCKXETXF.6YS6EN2CT7",
+       "description": "$0.0002625 per 1K input tokens priority for gpt-oss-120b in US East (N. Virginia)",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0002625000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "ZFCJE4XEZQ3864TH": {
+    "ZFCJE4XEZQ3864TH.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "ZFCJE4XEZQ3864TH",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "ZFCJE4XEZQ3864TH.JRTCKXETXF.6YS6EN2CT7": {
+       "rateCode": "ZFCJE4XEZQ3864TH.JRTCKXETXF.6YS6EN2CT7",
+       "description": "$0.00105 per 1K token for openai.gpt-oss-120b-mantle-output-tokens-priority in US East (N. Virginia)",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0010500000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "7C997NSFX4SFYQ7J": {
+    "7C997NSFX4SFYQ7J.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "7C997NSFX4SFYQ7J",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "7C997NSFX4SFYQ7J.JRTCKXETXF.6YS6EN2CT7": {
+       "rateCode": "7C997NSFX4SFYQ7J.JRTCKXETXF.6YS6EN2CT7",
+       "description": "$0.0002625 per 1K token for openai.gpt-oss-120b-mantle-input-tokens-priority in US East (N. Virginia)",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0002625000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "JAXT66QA865BYKAA": {
+    "JAXT66QA865BYKAA.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "JAXT66QA865BYKAA",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "JAXT66QA865BYKAA.JRTCKXETXF.6YS6EN2CT7": {
+       "rateCode": "JAXT66QA865BYKAA.JRTCKXETXF.6YS6EN2CT7",
+       "description": "$0.00105 per 1K output tokens priority for gpt-oss-120b in US East (N. Virginia)",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0010500000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "W28SH4ZK47NY7JZ8": {
+    "W28SH4ZK47NY7JZ8.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "W28SH4ZK47NY7JZ8",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "W28SH4ZK47NY7JZ8.JRTCKXETXF.6YS6EN2CT7": {
+       "rateCode": "W28SH4ZK47NY7JZ8.JRTCKXETXF.6YS6EN2CT7",
+       "description": "$0.0003 per 1K token for openai.gpt-oss-120b-mantle-output-tokens-flex in US East (N. Virginia)",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0003000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "U6WAJF7G3M4RQS3M": {
+    "U6WAJF7G3M4RQS3M.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "U6WAJF7G3M4RQS3M",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "U6WAJF7G3M4RQS3M.JRTCKXETXF.6YS6EN2CT7": {
+       "rateCode": "U6WAJF7G3M4RQS3M.JRTCKXETXF.6YS6EN2CT7",
+       "description": "$0.00015 per 1K token for qwen.qwen3-32b-mantle-input-tokens-standard in US East (N. Virginia)",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0001500000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "KGHQD8ZHB5468Z38": {
+    "KGHQD8ZHB5468Z38.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "KGHQD8ZHB5468Z38",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "KGHQD8ZHB5468Z38.JRTCKXETXF.6YS6EN2CT7": {
+       "rateCode": "KGHQD8ZHB5468Z38.JRTCKXETXF.6YS6EN2CT7",
+       "description": "$0.0006 per 1K output tokens for gpt-oss-120b in US East (N. Virginia)",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0006000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "FAEVCZ6YAW9RCRVH": {
+    "FAEVCZ6YAW9RCRVH.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "FAEVCZ6YAW9RCRVH",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "FAEVCZ6YAW9RCRVH.JRTCKXETXF.6YS6EN2CT7": {
+       "rateCode": "FAEVCZ6YAW9RCRVH.JRTCKXETXF.6YS6EN2CT7",
+       "description": "$0.0003 per 1K token for openai.gpt-oss-120b-mantle-output-tokens-batch in US East (N. Virginia)",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0003000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "FSY9M8QBH2ZWDM7N": {
+    "FSY9M8QBH2ZWDM7N.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "FSY9M8QBH2ZWDM7N",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "FSY9M8QBH2ZWDM7N.JRTCKXETXF.6YS6EN2CT7": {
+       "rateCode": "FSY9M8QBH2ZWDM7N.JRTCKXETXF.6YS6EN2CT7",
+       "description": "$0.000075 per 1K token for qwen.qwen3-32b-mantle-input-tokens-flex in US East (N. Virginia)",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0000750000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "VYRF2H4GDT7CVF8M": {
+    "VYRF2H4GDT7CVF8M.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "VYRF2H4GDT7CVF8M",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "VYRF2H4GDT7CVF8M.JRTCKXETXF.6YS6EN2CT7": {
+       "rateCode": "VYRF2H4GDT7CVF8M.JRTCKXETXF.6YS6EN2CT7",
+       "description": "$0.000075 per 1K token for openai.gpt-oss-120b-mantle-input-tokens-batch in US East (N. Virginia)",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0000750000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "2YZHYWW8MKSHW6AU": {
+    "2YZHYWW8MKSHW6AU.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "2YZHYWW8MKSHW6AU",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "2YZHYWW8MKSHW6AU.JRTCKXETXF.6YS6EN2CT7": {
+       "rateCode": "2YZHYWW8MKSHW6AU.JRTCKXETXF.6YS6EN2CT7",
+       "description": "$0.0003 per 1K output tokens flex for gpt-oss-120b in US East (N. Virginia)",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0003000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "GZENDQ3GJDGZWT8X": {
+    "GZENDQ3GJDGZWT8X.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "GZENDQ3GJDGZWT8X",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "GZENDQ3GJDGZWT8X.JRTCKXETXF.6YS6EN2CT7": {
+       "rateCode": "GZENDQ3GJDGZWT8X.JRTCKXETXF.6YS6EN2CT7",
+       "description": "$0.0003 per 1K token for qwen.qwen3-32b-mantle-output-tokens-flex in US East (N. Virginia)",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0003000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "UEJ6RRGVWV8HT4KC": {
+    "UEJ6RRGVWV8HT4KC.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "UEJ6RRGVWV8HT4KC",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "UEJ6RRGVWV8HT4KC.JRTCKXETXF.6YS6EN2CT7": {
+       "rateCode": "UEJ6RRGVWV8HT4KC.JRTCKXETXF.6YS6EN2CT7",
+       "description": "$0.0006 per 1K token for openai.gpt-oss-120b-mantle-output-tokens-standard in US East (N. Virginia)",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0006000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "UFDY28GAJ75BETAE": {
+    "UFDY28GAJ75BETAE.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "UFDY28GAJ75BETAE",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "UFDY28GAJ75BETAE.JRTCKXETXF.6YS6EN2CT7": {
+       "rateCode": "UFDY28GAJ75BETAE.JRTCKXETXF.6YS6EN2CT7",
+       "description": "$0.000075 per 1K token for openai.gpt-oss-120b-mantle-input-tokens-flex in US East (N. Virginia)",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0000750000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "KMZFVEBPVFAP5FUF": {
+    "KMZFVEBPVFAP5FUF.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "KMZFVEBPVFAP5FUF",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "KMZFVEBPVFAP5FUF.JRTCKXETXF.6YS6EN2CT7": {
+       "rateCode": "KMZFVEBPVFAP5FUF.JRTCKXETXF.6YS6EN2CT7",
+       "description": "$0.00025 per 1K tokens for Claude3Haiku-input-tokens inUS East (N. Virginia)",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0002500000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "AQEZQAY2B27EKGDJ": {
+    "AQEZQAY2B27EKGDJ.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "AQEZQAY2B27EKGDJ",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "AQEZQAY2B27EKGDJ.JRTCKXETXF.6YS6EN2CT7": {
+       "rateCode": "AQEZQAY2B27EKGDJ.JRTCKXETXF.6YS6EN2CT7",
+       "description": "$0.0003 per 1K output tokens for gpt-oss-120b in US East (N. Virginia) for Batch",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0003000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "K7EPD38WB9WRZSJH": {
+    "K7EPD38WB9WRZSJH.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "K7EPD38WB9WRZSJH",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "K7EPD38WB9WRZSJH.JRTCKXETXF.6YS6EN2CT7": {
+       "rateCode": "K7EPD38WB9WRZSJH.JRTCKXETXF.6YS6EN2CT7",
+       "description": "$0.00015 per 1K token for openai.gpt-oss-120b-mantle-input-tokens-standard in US East (N. Virginia)",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0001500000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "X3UFBFJVAKNF3XC9": {
+    "X3UFBFJVAKNF3XC9.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "X3UFBFJVAKNF3XC9",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "X3UFBFJVAKNF3XC9.JRTCKXETXF.6YS6EN2CT7": {
+       "rateCode": "X3UFBFJVAKNF3XC9.JRTCKXETXF.6YS6EN2CT7",
+       "description": "$0.0003 per 1K token for qwen.qwen3-32b-mantle-output-tokens-batch in US East (N. Virginia)",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0003000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "D9PT9YK5C3RYGBPQ": {
+    "D9PT9YK5C3RYGBPQ.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "D9PT9YK5C3RYGBPQ",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "D9PT9YK5C3RYGBPQ.JRTCKXETXF.6YS6EN2CT7": {
+       "rateCode": "D9PT9YK5C3RYGBPQ.JRTCKXETXF.6YS6EN2CT7",
+       "description": "$0.00105 per 1K token for qwen.qwen3-32b-mantle-output-tokens-priority in US East (N. Virginia)",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0010500000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "Q2U4FFKKTW34QVFG": {
+    "Q2U4FFKKTW34QVFG.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "Q2U4FFKKTW34QVFG",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "Q2U4FFKKTW34QVFG.JRTCKXETXF.6YS6EN2CT7": {
+       "rateCode": "Q2U4FFKKTW34QVFG.JRTCKXETXF.6YS6EN2CT7",
+       "description": "$0.00015 per 1K input tokens for gpt-oss-120b in US East (N. Virginia)",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0001500000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "K7YQKJ7A98DK259W": {
+    "K7YQKJ7A98DK259W.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "K7YQKJ7A98DK259W",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "K7YQKJ7A98DK259W.JRTCKXETXF.6YS6EN2CT7": {
+       "rateCode": "K7YQKJ7A98DK259W.JRTCKXETXF.6YS6EN2CT7",
+       "description": "$0.000075 per 1K token for qwen.qwen3-32b-mantle-input-tokens-batch in US East (N. Virginia)",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0000750000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "EYCMZSK8KR8FFJRP": {
+    "EYCMZSK8KR8FFJRP.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "EYCMZSK8KR8FFJRP",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "EYCMZSK8KR8FFJRP.JRTCKXETXF.6YS6EN2CT7": {
+       "rateCode": "EYCMZSK8KR8FFJRP.JRTCKXETXF.6YS6EN2CT7",
+       "description": "$0.0002625 per 1K token for qwen.qwen3-32b-mantle-input-tokens-priority in US East (N. Virginia)",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0002625000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "7TG6VJR3W3D8EKG8": {
+    "7TG6VJR3W3D8EKG8.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "7TG6VJR3W3D8EKG8",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "7TG6VJR3W3D8EKG8.JRTCKXETXF.6YS6EN2CT7": {
+       "rateCode": "7TG6VJR3W3D8EKG8.JRTCKXETXF.6YS6EN2CT7",
+       "description": "$0.0006 per 1K token for qwen.qwen3-32b-mantle-output-tokens-standard in US East (N. Virginia)",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0006000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   }
+  }
+ }
+}

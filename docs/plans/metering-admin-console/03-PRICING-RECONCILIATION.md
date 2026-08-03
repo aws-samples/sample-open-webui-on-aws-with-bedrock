@@ -5,6 +5,14 @@ SPDX-License-Identifier: MIT-0
 
 # Pricing reconciliation — the honest final answer on the $0 models
 
+> **SUPERSEDED (2026-08).** The seeded-default tier this plan introduced was
+> removed by the single-source pricing redesign
+> ([`.kiro/specs/metering-pricing-single-source/`](../../../.kiro/specs/metering-pricing-single-source/design.md),
+> analysis in [`05-PRICING-SINGLE-SOURCE.md`](05-PRICING-SINGLE-SOURCE.md)).
+> Frontier Claude/GPT rates now come straight from the
+> `AmazonBedrockFoundationModels` offer file; models without a published rate
+> are honestly unpriced until an operator override. Kept for history.
+
 Follow-up to [`02-PRICING-INVESTIGATION.md`](02-PRICING-INVESTIGATION.md). The
 first investigation fixed the generator (41→106 models) but a few headline
 models still settled at $0. This documents *exactly why*, verified against

@@ -132,13 +132,17 @@ export class GatewayStack extends cdk.Stack {
 
       const v2Dir = path.join(__dirname, '..', '..', 'gateway', 'metering-interceptor');
       const stagingDir = fs.mkdtempSync(path.join(os.tmpdir(), 'metering-interceptor-'));
-      // Bundle the big JSON configs beside the handler (4 KB env ceiling).
+      // Bundle the big JSON config beside the handler (4 KB env ceiling) and
+      // the shared pricing package (metering/pricing) — the admission estimate
+      // resolves rates from the DynamoDB catalog through the same resolver as
+      // the settle path; no bundled price snapshot (single-source design D6).
       fs.copyFileSync(path.join(v2Dir, 'index.py'), path.join(stagingDir, 'index.py'));
       fs.copyFileSync(capsPath, path.join(stagingDir, 'model-capabilities.json'));
-      fs.copyFileSync(
-        path.join(__dirname, '..', '..', 'config', 'model-prices.json'),
-        path.join(stagingDir, 'model-prices.json'),
-      );
+      const pricingSrcDir = path.join(__dirname, '..', '..', 'metering', 'pricing');
+      fs.mkdirSync(path.join(stagingDir, 'pricing'));
+      for (const f of fs.readdirSync(pricingSrcDir).filter((n) => n.endsWith('.py'))) {
+        fs.copyFileSync(path.join(pricingSrcDir, f), path.join(stagingDir, 'pricing', f));
+      }
       interceptor = new lambda.Function(this, 'MeteringInterceptor', {
         functionName: `${envPrefix}open-webui-gw-metering-interceptor`,
         runtime: lambda.Runtime.PYTHON_3_12,

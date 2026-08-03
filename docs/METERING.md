@@ -104,41 +104,49 @@ automatically.
 
 ## Accuracy & reconciliation (what to tell finance)
 
-Per-call numbers are **provider-reported token counts** priced by a versioned
-map generated from the AWS Price List (`scripts/generate-price-map.py`;
-regenerate monthly — the `PriceMapVersion` stack output tells you what's
-deployed). A nightly reconciler compares the ledger against Cost Explorer's
-per-model mantle usage types (unit = 1K tokens) at D-2 and publishes
-`Metering/ReconciliationDriftPct`; **the measured 30-day drift is the accuracy
-claim** — no number is promised up front. Notes:
+Per-call numbers are **provider-reported token counts** priced from the
+**single-source pricing catalog** in DynamoDB — one automated source (the AWS
+Price List) plus operator overrides, nothing else. A nightly reconciler
+compares the ledger against Cost Explorer's per-model mantle usage types
+(unit = 1K tokens) at D-2 and publishes `Metering/ReconciliationDriftPct`;
+**the measured 30-day drift is the accuracy claim** — no number is promised up
+front. Notes:
 
 - **Model pricing catalog** (console **Model pricing** page + `GET /pricing`):
-  the authoritative, self-updating price source. A scheduled refresher
-  (`…-pricing-refresher`, daily + on-demand via "Refresh from AWS") parses the
-  **AWS Price List Bulk API** — all Bedrock offer files (`AmazonBedrock` +
-  `AmazonBedrockService`) and all on-demand token usage-type shapes (mantle,
-  classic, cross-region) — into `PRICING#<model>/PUBLISHED` rows. Operators set
-  per-model **overrides** (`PRICING#<model>/OVERRIDE`, audited) in the console.
-  The debit Lambda resolves each rate **override → AWS-published →
-  provider-list → seeded default → bundled `config/model-prices.json` →
-  unpriced**, cached 5 min. The **provider-list** tier (pinned LiteLLM public
-  price JSON) supplies real Anthropic/OpenAI rates for frontier models AWS
-  hasn't published a Bedrock SKU for yet — AWS-published always wins where it
-  has a SKU (it is the invoice), and a real SKU auto-supersedes the estimate on
-  the next refresh (docs/plans/metering-admin-console/04-PROVIDER-PRICE-SOURCE.md). So published prices
-  refresh with no redeploy, overrides survive refreshes, and each settled row
-  records its `price_source`. Full root-cause + design:
-  [`docs/plans/metering-admin-console/02-PRICING-INVESTIGATION.md`](plans/metering-admin-console/02-PRICING-INVESTIGATION.md).
-- **Unpriced models** (e.g. pre-GA frontier ids like `anthropic.claude-sonnet-5`,
-  `openai.gpt-5.x` that AWS hasn't published a SKU for yet): usage is recorded
-  in tokens, priced at $0, and the `UnpricedModel` alarm fires. Set an operator
-  override in the console's Model pricing page (or add a rate under
-  `"overrides"` in `config/model-prices.json`) to bring them under dollar
-  quotas — never a silent guess. (The generator now prices ~106 models
-  including all published Claude/Llama/Gemma/DeepSeek/GPT-OSS; only genuinely
-  unpublished versions remain unpriced.) Settled ledger
-  rows for unpriced models carry `unpriced: true` plus `usd_estimate` (the
-  interceptor's admission-estimate dollars) so the console shows
+  a scheduled refresher (`…-pricing-refresher`, daily + on-demand via "Refresh
+  from AWS") parses the **three Bedrock offer files** for the deployment
+  region (`AmazonBedrockFoundationModels` — the marketplace file that carries
+  modern Anthropic/OpenAI grids — plus `AmazonBedrock` and
+  `AmazonBedrockService`), joins each token rate to a **Bedrock model id** via
+  `bedrock:ListFoundationModels` (operator alias → id embedded in the usage
+  type → exact normalized-name match; anything else lands in the **Unmatched**
+  review queue, never a guess), and writes `PRICING#<model_id>/PUBLISHED` rows
+  keyed by every id the model is invocable under. Rates are stored **USD per
+  1M tokens** exactly as published, as a full grid: routing (in-region /
+  global) × tier (standard / batch / flex / priority / latency-optimized) ×
+  context (default / long) × direction (input / output / cache read / cache
+  write). Operators set per-model **overrides**
+  (`PRICING#<model_id>/OVERRIDE`, audited, USD per 1M) in the console. The
+  settle path and the admission estimate resolve through the **same shared
+  resolver** (`metering/pricing/`): **override → AWS-published → unpriced**,
+  cached ≤5 min. Cross-region **routing** is derived from the invoked id
+  (`global.…` → global rate; `us.…` geo profiles price at the in-region rate —
+  AWS publishes no on-demand geo token SKU) and stamped on every ledger row;
+  a documented substitution (e.g. a flex request for a model publishing only
+  standard) sets `rate_fallback`. Each settled row records `price_source` and
+  the supplying row's offer version in `price_map_version`. Design:
+  [`.kiro/specs/metering-pricing-single-source/design.md`](../.kiro/specs/metering-pricing-single-source/design.md).
+- **Unmatched Price List entries** (`PRICING#_UNMATCHED`, console Unmatched
+  queue, `PricingUnmatched` alarm): AWS publishes a token rate but no model id
+  could be resolved without guessing (legacy display names, retired models,
+  naming drift). Bind the name to a model id in the console (audited,
+  `PRICING#_ALIAS`) and refresh — bindings outrank automatic matching.
+- **Unpriced models** (no AWS-published rate and no override): usage is
+  recorded in tokens, priced at $0, and the `UnpricedModel` alarm fires. Set
+  an operator override in the console's Model pricing page (USD per 1M
+  tokens) to bring them under dollar quotas — never a silent guess. Settled
+  ledger rows for unpriced models carry `unpriced: true` plus `usd_estimate`
+  (the interceptor's admission-estimate dollars) so the console shows
   "~$X est." rather than a bare `$0` — a call that cost money reads as
   cost-unknown, not free. The `usd_estimate` is display-only and is never
   summed into the enforced counter (`used_usd`).
@@ -218,7 +226,8 @@ token spend it governs (see `docs/COST_ANALYSIS_20K_USERS.md`).
 - Mid-stream cutoff is out of scope (the managed gateway owns the stream;
   no industry gateway does this either) — the bound is next-call blocking +
   the max-tokens clamp.
-- The capability matrix and price map drift with the Bedrock catalog —
-  regenerate `config/model-capabilities.json` (probe script) and
-  `config/model-prices.json` (price script) on a schedule; both are inputs
-  to the interceptor asset, so redeploy the gateway stack after.
+- The capability matrix drifts with the Bedrock catalog — regenerate
+  `config/model-capabilities.json` (probe script) on a schedule; it is an
+  input to the interceptor asset, so redeploy the gateway stack after.
+  Pricing does NOT need a redeploy: the catalog refreshes itself daily from
+  the AWS Price List (or on demand from the console).

@@ -1,0 +1,1549 @@
+{
+ "_provenance": "Trimmed from the live AmazonBedrockFoundationModels us-east-1 offer file (version 20260728133434); values are real published rates.",
+ "formatVersion": "v1.0",
+ "offerCode": "AmazonBedrockFoundationModels",
+ "version": "20260728133434",
+ "publicationDate": "2026-07-28T13:34:34Z",
+ "products": {
+  "MZJNX79ZA8QRBG2E": {
+   "sku": "MZJNX79ZA8QRBG2E",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_cache_write_tokens_1h_standard-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Opus 5 (Amazon Bedrock Edition)"
+   }
+  },
+  "R3K9HYRTTJUP7UJF": {
+   "sku": "R3K9HYRTTJUP7UJF",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_output_tokens_standard-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Opus 5 (Amazon Bedrock Edition)"
+   }
+  },
+  "MWE9PKX7F5D2SQYY": {
+   "sku": "MWE9PKX7F5D2SQYY",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_input_tokens_batch-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Opus 5 (Amazon Bedrock Edition)"
+   }
+  },
+  "A8AX5C4CZN5SDSDZ": {
+   "sku": "A8AX5C4CZN5SDSDZ",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_InputTokenCount-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Sonnet 4 (Amazon Bedrock Edition)"
+   }
+  },
+  "DY4B4Q3TRTAY8V6G": {
+   "sku": "DY4B4Q3TRTAY8V6G",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_InputTokenCount_Global-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Haiku 4.5 (Amazon Bedrock Edition)"
+   }
+  },
+  "X6EFEEBNCHT9594X": {
+   "sku": "X6EFEEBNCHT9594X",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_Reserved_3Month_InputTPM_Geo-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Haiku 4.5 (Amazon Bedrock Edition)"
+   }
+  },
+  "VRPAV9833UMAWYHJ": {
+   "sku": "VRPAV9833UMAWYHJ",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_OutputTokenCount-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Sonnet 4 (Amazon Bedrock Edition)"
+   }
+  },
+  "X629GDA2GXAP6R54": {
+   "sku": "X629GDA2GXAP6R54",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_OutputTokenCount-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Haiku 4.5 (Amazon Bedrock Edition)"
+   }
+  },
+  "NN4TW2XS9PF65MYP": {
+   "sku": "NN4TW2XS9PF65MYP",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_input_tokens_global_standard-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Opus 5 (Amazon Bedrock Edition)"
+   }
+  },
+  "V6YWAS4REFW47M5K": {
+   "sku": "V6YWAS4REFW47M5K",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_CacheReadInputTokenCount_Global-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Haiku 4.5 (Amazon Bedrock Edition)"
+   }
+  },
+  "XADKFYXVGBFBJSU7": {
+   "sku": "XADKFYXVGBFBJSU7",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_OutputTokenCount_Global-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Haiku 4.5 (Amazon Bedrock Edition)"
+   }
+  },
+  "E56Y3URFEMX4ZGDC": {
+   "sku": "E56Y3URFEMX4ZGDC",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_OutputTokenCount_Batch-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Haiku 4.5 (Amazon Bedrock Edition)"
+   }
+  },
+  "77G6V6NH3EBMFDDE": {
+   "sku": "77G6V6NH3EBMFDDE",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_cache_read_tokens_global_standard-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Opus 5 (Amazon Bedrock Edition)"
+   }
+  },
+  "JQZVTEVSX3ECK3N5": {
+   "sku": "JQZVTEVSX3ECK3N5",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_output_tokens_global_batch-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Opus 5 (Amazon Bedrock Edition)"
+   }
+  },
+  "YCN5Z43CSRWK85KD": {
+   "sku": "YCN5Z43CSRWK85KD",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_cache_write_tokens_standard-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Opus 5 (Amazon Bedrock Edition)"
+   }
+  },
+  "SHU8SWFE8GBAQTTK": {
+   "sku": "SHU8SWFE8GBAQTTK",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_Reserved_1Month_OutputTPM_Global-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Haiku 4.5 (Amazon Bedrock Edition)"
+   }
+  },
+  "6KXSNHTP28CQEHJK": {
+   "sku": "6KXSNHTP28CQEHJK",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_CacheWriteInputTokenCount_Global-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Sonnet 4 (Amazon Bedrock Edition)"
+   }
+  },
+  "WPB4W5GZ2SPAM3TQ": {
+   "sku": "WPB4W5GZ2SPAM3TQ",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_OutputTokenCount_Global-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Sonnet 4 (Amazon Bedrock Edition)"
+   }
+  },
+  "A7XA9SZ3KZJX2SQC": {
+   "sku": "A7XA9SZ3KZJX2SQC",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_CacheReadInputTokenCount-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Sonnet 4 (Amazon Bedrock Edition)"
+   }
+  },
+  "8GAKPXRDT9CSGWEC": {
+   "sku": "8GAKPXRDT9CSGWEC",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_InputTokenCount_Batch-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Haiku 4.5 (Amazon Bedrock Edition)"
+   }
+  },
+  "RGSZ8DF5NB8ZUT8D": {
+   "sku": "RGSZ8DF5NB8ZUT8D",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_input_tokens_global_batch-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Opus 5 (Amazon Bedrock Edition)"
+   }
+  },
+  "NBCPQTKQRKGSQ75J": {
+   "sku": "NBCPQTKQRKGSQ75J",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_Reserved_1Month_OutputTPM_Geo-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Haiku 4.5 (Amazon Bedrock Edition)"
+   }
+  },
+  "AH7STW64ZJCKJWNJ": {
+   "sku": "AH7STW64ZJCKJWNJ",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_InputTokenCount_Batch-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Sonnet 4 (Amazon Bedrock Edition)"
+   }
+  },
+  "W4WDUUMEWN8ZMKYT": {
+   "sku": "W4WDUUMEWN8ZMKYT",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_CacheWriteInputTokenCount_Global-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Haiku 4.5 (Amazon Bedrock Edition)"
+   }
+  },
+  "V3ZQ2T8EG38YATXV": {
+   "sku": "V3ZQ2T8EG38YATXV",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_output_tokens_global_standard-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Opus 5 (Amazon Bedrock Edition)"
+   }
+  },
+  "9X9W5UPV49MD6BYR": {
+   "sku": "9X9W5UPV49MD6BYR",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_InputTokenCount_Global-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Sonnet 4 (Amazon Bedrock Edition)"
+   }
+  },
+  "P2NHPZ82T9FY9YPQ": {
+   "sku": "P2NHPZ82T9FY9YPQ",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_Reserved_3Month_OutputTPM_Global-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Haiku 4.5 (Amazon Bedrock Edition)"
+   }
+  },
+  "XXRG79PMAKM99H3Y": {
+   "sku": "XXRG79PMAKM99H3Y",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_output_tokens_batch-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Opus 5 (Amazon Bedrock Edition)"
+   }
+  },
+  "VJXPZKPF7EDCFXN3": {
+   "sku": "VJXPZKPF7EDCFXN3",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_CacheReadInputTokenCount-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Haiku 4.5 (Amazon Bedrock Edition)"
+   }
+  },
+  "J4QVK5WXVMSGTHCE": {
+   "sku": "J4QVK5WXVMSGTHCE",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_CacheWriteInputTokenCount-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Sonnet 4 (Amazon Bedrock Edition)"
+   }
+  },
+  "JQDUC8Q4K8C6GSGH": {
+   "sku": "JQDUC8Q4K8C6GSGH",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_InputTokenCount-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Haiku 4.5 (Amazon Bedrock Edition)"
+   }
+  },
+  "9F36CPTU6P68N3FP": {
+   "sku": "9F36CPTU6P68N3FP",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_input_tokens_standard-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Opus 5 (Amazon Bedrock Edition)"
+   }
+  },
+  "TUAZT5WR4FQ4PBP3": {
+   "sku": "TUAZT5WR4FQ4PBP3",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_InputTokenCount_Global_Batch-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Sonnet 4 (Amazon Bedrock Edition)"
+   }
+  },
+  "P8DMZHZDTNRHAPMZ": {
+   "sku": "P8DMZHZDTNRHAPMZ",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_OutputTokenCount_Global_Batch-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Haiku 4.5 (Amazon Bedrock Edition)"
+   }
+  },
+  "CDG7WESKYQ9N9KDN": {
+   "sku": "CDG7WESKYQ9N9KDN",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_CacheWriteInputTokenCount-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Haiku 4.5 (Amazon Bedrock Edition)"
+   }
+  },
+  "8MHAMDP7DZR2834W": {
+   "sku": "8MHAMDP7DZR2834W",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_OutputTokenCount_Global_Batch-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Sonnet 4 (Amazon Bedrock Edition)"
+   }
+  },
+  "Q8W3Y7MG2MG2CQGE": {
+   "sku": "Q8W3Y7MG2MG2CQGE",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_CacheReadInputTokenCount_Global-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Sonnet 4 (Amazon Bedrock Edition)"
+   }
+  },
+  "NNDNGXGPTYYKYS5U": {
+   "sku": "NNDNGXGPTYYKYS5U",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_Reserved_3Month_OutputTPM_Geo-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Haiku 4.5 (Amazon Bedrock Edition)"
+   }
+  },
+  "YJFU5XBU67BFQMCX": {
+   "sku": "YJFU5XBU67BFQMCX",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_Reserved_1Month_InputTPM_Global-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Haiku 4.5 (Amazon Bedrock Edition)"
+   }
+  },
+  "T9333HTDJ5XXW7GZ": {
+   "sku": "T9333HTDJ5XXW7GZ",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_InputTokenCount_Global_Batch-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Haiku 4.5 (Amazon Bedrock Edition)"
+   }
+  },
+  "928BA434K2J88YDT": {
+   "sku": "928BA434K2J88YDT",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_cache_write_tokens_global_standard-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Opus 5 (Amazon Bedrock Edition)"
+   }
+  },
+  "NXRAYDKP3P9GWEZS": {
+   "sku": "NXRAYDKP3P9GWEZS",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_cache_write_tokens_1h_global_standard-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Opus 5 (Amazon Bedrock Edition)"
+   }
+  },
+  "RMNG53S49ZTEK6HS": {
+   "sku": "RMNG53S49ZTEK6HS",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_Reserved_3Month_InputTPM_Global-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Haiku 4.5 (Amazon Bedrock Edition)"
+   }
+  },
+  "FEQV4WTNJWUT35MN": {
+   "sku": "FEQV4WTNJWUT35MN",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_cache_read_tokens_standard-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Opus 5 (Amazon Bedrock Edition)"
+   }
+  },
+  "3Z3HTWANN6PKFUBJ": {
+   "sku": "3Z3HTWANN6PKFUBJ",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_CacheWrite1hInputTokenCount_Global-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Haiku 4.5 (Amazon Bedrock Edition)"
+   }
+  },
+  "WFDJPN3RNP3N6NWZ": {
+   "sku": "WFDJPN3RNP3N6NWZ",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_Reserved_1Month_InputTPM_Geo-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Haiku 4.5 (Amazon Bedrock Edition)"
+   }
+  },
+  "WTCBCUF6TGQ5M3NB": {
+   "sku": "WTCBCUF6TGQ5M3NB",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_CacheWrite1hInputTokenCount-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Haiku 4.5 (Amazon Bedrock Edition)"
+   }
+  },
+  "K7BZRSJ6MQB8G63B": {
+   "sku": "K7BZRSJ6MQB8G63B",
+   "attributes": {
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-MP:USE1_OutputTokenCount_Batch-Units",
+    "operation": "",
+    "regionCode": "us-east-1",
+    "servicename": "Claude Sonnet 4 (Amazon Bedrock Edition)"
+   }
+  }
+ },
+ "terms": {
+  "OnDemand": {
+   "MZJNX79ZA8QRBG2E": {
+    "MZJNX79ZA8QRBG2E.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "MZJNX79ZA8QRBG2E",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "MZJNX79ZA8QRBG2E.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "MZJNX79ZA8QRBG2E.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Cache Write Tokens (1h TTL) - Standard",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M tokens",
+       "pricePerUnit": {
+        "USD": "11.0000000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "R3K9HYRTTJUP7UJF": {
+    "R3K9HYRTTJUP7UJF.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "R3K9HYRTTJUP7UJF",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "R3K9HYRTTJUP7UJF.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "R3K9HYRTTJUP7UJF.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Million Response Tokens Standard",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M tokens",
+       "pricePerUnit": {
+        "USD": "27.5000000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "MWE9PKX7F5D2SQYY": {
+    "MWE9PKX7F5D2SQYY.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "MWE9PKX7F5D2SQYY",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "MWE9PKX7F5D2SQYY.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "MWE9PKX7F5D2SQYY.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Input Tokens - Batch",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M tokens",
+       "pricePerUnit": {
+        "USD": "2.7500000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "A8AX5C4CZN5SDSDZ": {
+    "A8AX5C4CZN5SDSDZ.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "A8AX5C4CZN5SDSDZ",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "A8AX5C4CZN5SDSDZ.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "A8AX5C4CZN5SDSDZ.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Million Input Tokens",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M tokens",
+       "pricePerUnit": {
+        "USD": "3.0000000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "DY4B4Q3TRTAY8V6G": {
+    "DY4B4Q3TRTAY8V6G.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "DY4B4Q3TRTAY8V6G",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "DY4B4Q3TRTAY8V6G.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "DY4B4Q3TRTAY8V6G.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Million Input Tokens Global",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M tokens",
+       "pricePerUnit": {
+        "USD": "1.0000000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "X6EFEEBNCHT9594X": {
+    "X6EFEEBNCHT9594X.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "X6EFEEBNCHT9594X",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "X6EFEEBNCHT9594X.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "X6EFEEBNCHT9594X.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Per Hour per 1K Input TPM Reserved 3 Month Regional",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M TPM Hour",
+       "pricePerUnit": {
+        "USD": "0.0594000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "VRPAV9833UMAWYHJ": {
+    "VRPAV9833UMAWYHJ.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "VRPAV9833UMAWYHJ",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "VRPAV9833UMAWYHJ.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "VRPAV9833UMAWYHJ.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Million Response Tokens",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M tokens",
+       "pricePerUnit": {
+        "USD": "15.0000000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "X629GDA2GXAP6R54": {
+    "X629GDA2GXAP6R54.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "X629GDA2GXAP6R54",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "X629GDA2GXAP6R54.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "X629GDA2GXAP6R54.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Million Response Tokens Regional",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M tokens",
+       "pricePerUnit": {
+        "USD": "5.5000000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "NN4TW2XS9PF65MYP": {
+    "NN4TW2XS9PF65MYP.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "NN4TW2XS9PF65MYP",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "NN4TW2XS9PF65MYP.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "NN4TW2XS9PF65MYP.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Input Tokens - Standard, Global",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M tokens",
+       "pricePerUnit": {
+        "USD": "5.0000000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "V6YWAS4REFW47M5K": {
+    "V6YWAS4REFW47M5K.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "V6YWAS4REFW47M5K",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "V6YWAS4REFW47M5K.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "V6YWAS4REFW47M5K.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Million Cache Read Input Tokens Global",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M tokens",
+       "pricePerUnit": {
+        "USD": "0.1000000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "XADKFYXVGBFBJSU7": {
+    "XADKFYXVGBFBJSU7.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "XADKFYXVGBFBJSU7",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "XADKFYXVGBFBJSU7.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "XADKFYXVGBFBJSU7.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Million Response Tokens Global",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M tokens",
+       "pricePerUnit": {
+        "USD": "5.0000000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "E56Y3URFEMX4ZGDC": {
+    "E56Y3URFEMX4ZGDC.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "E56Y3URFEMX4ZGDC",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "E56Y3URFEMX4ZGDC.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "E56Y3URFEMX4ZGDC.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Million Batch Response Tokens Regional",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M tokens",
+       "pricePerUnit": {
+        "USD": "2.7500000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "77G6V6NH3EBMFDDE": {
+    "77G6V6NH3EBMFDDE.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "77G6V6NH3EBMFDDE",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "77G6V6NH3EBMFDDE.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "77G6V6NH3EBMFDDE.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Cache Read Tokens - Standard, Global",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M tokens",
+       "pricePerUnit": {
+        "USD": "0.5000000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "JQZVTEVSX3ECK3N5": {
+    "JQZVTEVSX3ECK3N5.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "JQZVTEVSX3ECK3N5",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "JQZVTEVSX3ECK3N5.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "JQZVTEVSX3ECK3N5.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Output Tokens - Batch, Global",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M tokens",
+       "pricePerUnit": {
+        "USD": "12.5000000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "YCN5Z43CSRWK85KD": {
+    "YCN5Z43CSRWK85KD.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "YCN5Z43CSRWK85KD",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "YCN5Z43CSRWK85KD.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "YCN5Z43CSRWK85KD.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Cache Write Tokens - Standard",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M tokens",
+       "pricePerUnit": {
+        "USD": "6.8750000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "SHU8SWFE8GBAQTTK": {
+    "SHU8SWFE8GBAQTTK.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "SHU8SWFE8GBAQTTK",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "SHU8SWFE8GBAQTTK.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "SHU8SWFE8GBAQTTK.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Per Hour per 1K Output TPM Reserved 1 Month Global",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M TPM Hour",
+       "pricePerUnit": {
+        "USD": "0.3000000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "6KXSNHTP28CQEHJK": {
+    "6KXSNHTP28CQEHJK.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "6KXSNHTP28CQEHJK",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "6KXSNHTP28CQEHJK.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "6KXSNHTP28CQEHJK.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Million Cache Write Input Tokens Global",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M tokens",
+       "pricePerUnit": {
+        "USD": "3.7500000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "WPB4W5GZ2SPAM3TQ": {
+    "WPB4W5GZ2SPAM3TQ.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "WPB4W5GZ2SPAM3TQ",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "WPB4W5GZ2SPAM3TQ.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "WPB4W5GZ2SPAM3TQ.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Million Response Tokens Global",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M tokens",
+       "pricePerUnit": {
+        "USD": "15.0000000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "A7XA9SZ3KZJX2SQC": {
+    "A7XA9SZ3KZJX2SQC.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "A7XA9SZ3KZJX2SQC",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "A7XA9SZ3KZJX2SQC.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "A7XA9SZ3KZJX2SQC.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Million Cache Read Input Tokens",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M tokens",
+       "pricePerUnit": {
+        "USD": "0.3000000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "8GAKPXRDT9CSGWEC": {
+    "8GAKPXRDT9CSGWEC.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "8GAKPXRDT9CSGWEC",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "8GAKPXRDT9CSGWEC.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "8GAKPXRDT9CSGWEC.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Million Batch Input Tokens Regional",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M tokens",
+       "pricePerUnit": {
+        "USD": "0.5500000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "RGSZ8DF5NB8ZUT8D": {
+    "RGSZ8DF5NB8ZUT8D.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "RGSZ8DF5NB8ZUT8D",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "RGSZ8DF5NB8ZUT8D.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "RGSZ8DF5NB8ZUT8D.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Input Tokens - Batch, Global",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M tokens",
+       "pricePerUnit": {
+        "USD": "2.5000000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "NBCPQTKQRKGSQ75J": {
+    "NBCPQTKQRKGSQ75J.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "NBCPQTKQRKGSQ75J",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "NBCPQTKQRKGSQ75J.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "NBCPQTKQRKGSQ75J.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Per Hour per 1K Output TPM Reserved 1 Month Regional",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M TPM Hour",
+       "pricePerUnit": {
+        "USD": "0.3300000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "AH7STW64ZJCKJWNJ": {
+    "AH7STW64ZJCKJWNJ.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "AH7STW64ZJCKJWNJ",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "AH7STW64ZJCKJWNJ.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "AH7STW64ZJCKJWNJ.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Million Batch Input Tokens",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M tokens",
+       "pricePerUnit": {
+        "USD": "1.5000000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "W4WDUUMEWN8ZMKYT": {
+    "W4WDUUMEWN8ZMKYT.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "W4WDUUMEWN8ZMKYT",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "W4WDUUMEWN8ZMKYT.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "W4WDUUMEWN8ZMKYT.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Million Cache Write Input Tokens Global",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M tokens",
+       "pricePerUnit": {
+        "USD": "1.2500000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "V3ZQ2T8EG38YATXV": {
+    "V3ZQ2T8EG38YATXV.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "V3ZQ2T8EG38YATXV",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "V3ZQ2T8EG38YATXV.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "V3ZQ2T8EG38YATXV.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Output Tokens - Standard, Global",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M tokens",
+       "pricePerUnit": {
+        "USD": "25.0000000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "9X9W5UPV49MD6BYR": {
+    "9X9W5UPV49MD6BYR.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "9X9W5UPV49MD6BYR",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "9X9W5UPV49MD6BYR.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "9X9W5UPV49MD6BYR.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Million Input Tokens Global",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M tokens",
+       "pricePerUnit": {
+        "USD": "3.0000000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "P2NHPZ82T9FY9YPQ": {
+    "P2NHPZ82T9FY9YPQ.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "P2NHPZ82T9FY9YPQ",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "P2NHPZ82T9FY9YPQ.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "P2NHPZ82T9FY9YPQ.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Per Hour per 1K Output TPM Reserved 3 Month Global",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M TPM Hour",
+       "pricePerUnit": {
+        "USD": "0.2700000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "XXRG79PMAKM99H3Y": {
+    "XXRG79PMAKM99H3Y.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "XXRG79PMAKM99H3Y",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "XXRG79PMAKM99H3Y.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "XXRG79PMAKM99H3Y.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Output Tokens - Batch",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M tokens",
+       "pricePerUnit": {
+        "USD": "13.7500000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "VJXPZKPF7EDCFXN3": {
+    "VJXPZKPF7EDCFXN3.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "VJXPZKPF7EDCFXN3",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "VJXPZKPF7EDCFXN3.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "VJXPZKPF7EDCFXN3.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Million Cache Read Input Tokens Regional",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M tokens",
+       "pricePerUnit": {
+        "USD": "0.1100000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "J4QVK5WXVMSGTHCE": {
+    "J4QVK5WXVMSGTHCE.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "J4QVK5WXVMSGTHCE",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "J4QVK5WXVMSGTHCE.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "J4QVK5WXVMSGTHCE.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Million Cache Write Input Tokens",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M tokens",
+       "pricePerUnit": {
+        "USD": "3.7500000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "JQDUC8Q4K8C6GSGH": {
+    "JQDUC8Q4K8C6GSGH.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "JQDUC8Q4K8C6GSGH",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "JQDUC8Q4K8C6GSGH.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "JQDUC8Q4K8C6GSGH.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Million Input Tokens Regional",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M tokens",
+       "pricePerUnit": {
+        "USD": "1.1000000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "9F36CPTU6P68N3FP": {
+    "9F36CPTU6P68N3FP.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "9F36CPTU6P68N3FP",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "9F36CPTU6P68N3FP.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "9F36CPTU6P68N3FP.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Million Input Tokens Standard",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M tokens",
+       "pricePerUnit": {
+        "USD": "5.5000000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "TUAZT5WR4FQ4PBP3": {
+    "TUAZT5WR4FQ4PBP3.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "TUAZT5WR4FQ4PBP3",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "TUAZT5WR4FQ4PBP3.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "TUAZT5WR4FQ4PBP3.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Million Batch Input Tokens Global",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M tokens",
+       "pricePerUnit": {
+        "USD": "1.5000000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "P8DMZHZDTNRHAPMZ": {
+    "P8DMZHZDTNRHAPMZ.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "P8DMZHZDTNRHAPMZ",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "P8DMZHZDTNRHAPMZ.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "P8DMZHZDTNRHAPMZ.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Million Batch Response Tokens Global",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M tokens",
+       "pricePerUnit": {
+        "USD": "2.5000000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "CDG7WESKYQ9N9KDN": {
+    "CDG7WESKYQ9N9KDN.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "CDG7WESKYQ9N9KDN",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "CDG7WESKYQ9N9KDN.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "CDG7WESKYQ9N9KDN.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Million Cache Write Input Tokens Regional",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M tokens",
+       "pricePerUnit": {
+        "USD": "1.3750000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "8MHAMDP7DZR2834W": {
+    "8MHAMDP7DZR2834W.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "8MHAMDP7DZR2834W",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "8MHAMDP7DZR2834W.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "8MHAMDP7DZR2834W.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Million Batch Response Tokens Global",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M tokens",
+       "pricePerUnit": {
+        "USD": "7.5000000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "Q8W3Y7MG2MG2CQGE": {
+    "Q8W3Y7MG2MG2CQGE.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "Q8W3Y7MG2MG2CQGE",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "Q8W3Y7MG2MG2CQGE.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "Q8W3Y7MG2MG2CQGE.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Million Cache Read Input Tokens Global",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M tokens",
+       "pricePerUnit": {
+        "USD": "0.3000000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "NNDNGXGPTYYKYS5U": {
+    "NNDNGXGPTYYKYS5U.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "NNDNGXGPTYYKYS5U",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "NNDNGXGPTYYKYS5U.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "NNDNGXGPTYYKYS5U.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Per Hour per 1K Output TPM Reserved 3 Month Regional",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M TPM Hour",
+       "pricePerUnit": {
+        "USD": "0.2970000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "YJFU5XBU67BFQMCX": {
+    "YJFU5XBU67BFQMCX.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "YJFU5XBU67BFQMCX",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "YJFU5XBU67BFQMCX.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "YJFU5XBU67BFQMCX.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Per Hour per 1K Input TPM Reserved 1 Month Global",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M TPM Hour",
+       "pricePerUnit": {
+        "USD": "0.0600000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "T9333HTDJ5XXW7GZ": {
+    "T9333HTDJ5XXW7GZ.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "T9333HTDJ5XXW7GZ",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "T9333HTDJ5XXW7GZ.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "T9333HTDJ5XXW7GZ.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Million Batch Input Tokens Global",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M tokens",
+       "pricePerUnit": {
+        "USD": "0.5000000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "928BA434K2J88YDT": {
+    "928BA434K2J88YDT.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "928BA434K2J88YDT",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "928BA434K2J88YDT.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "928BA434K2J88YDT.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Cache Write Tokens - Standard, Global",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M tokens",
+       "pricePerUnit": {
+        "USD": "6.2500000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "NXRAYDKP3P9GWEZS": {
+    "NXRAYDKP3P9GWEZS.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "NXRAYDKP3P9GWEZS",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "NXRAYDKP3P9GWEZS.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "NXRAYDKP3P9GWEZS.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Cache Write Tokens (1h TTL) - Standard, Global",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M tokens",
+       "pricePerUnit": {
+        "USD": "10.0000000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "RMNG53S49ZTEK6HS": {
+    "RMNG53S49ZTEK6HS.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "RMNG53S49ZTEK6HS",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "RMNG53S49ZTEK6HS.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "RMNG53S49ZTEK6HS.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Per Hour per 1K Input TPM Reserved 3 Month Global",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M TPM Hour",
+       "pricePerUnit": {
+        "USD": "0.0540000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "FEQV4WTNJWUT35MN": {
+    "FEQV4WTNJWUT35MN.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "FEQV4WTNJWUT35MN",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "FEQV4WTNJWUT35MN.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "FEQV4WTNJWUT35MN.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Cache Read Tokens - Standard",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M tokens",
+       "pricePerUnit": {
+        "USD": "0.5500000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "3Z3HTWANN6PKFUBJ": {
+    "3Z3HTWANN6PKFUBJ.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "3Z3HTWANN6PKFUBJ",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "3Z3HTWANN6PKFUBJ.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "3Z3HTWANN6PKFUBJ.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Million 1 hour Cache Write Input Tokens Global",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M tokens",
+       "pricePerUnit": {
+        "USD": "2.0000000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "WFDJPN3RNP3N6NWZ": {
+    "WFDJPN3RNP3N6NWZ.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "WFDJPN3RNP3N6NWZ",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "WFDJPN3RNP3N6NWZ.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "WFDJPN3RNP3N6NWZ.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Per Hour per 1K Input TPM Reserved 1 Month Regional",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M TPM Hour",
+       "pricePerUnit": {
+        "USD": "0.0660000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "WTCBCUF6TGQ5M3NB": {
+    "WTCBCUF6TGQ5M3NB.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "WTCBCUF6TGQ5M3NB",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "WTCBCUF6TGQ5M3NB.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "WTCBCUF6TGQ5M3NB.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Million 1 hour Cache Write Input Tokens Regional",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M tokens",
+       "pricePerUnit": {
+        "USD": "2.2000000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "K7BZRSJ6MQB8G63B": {
+    "K7BZRSJ6MQB8G63B.4799GE89SK": {
+     "offerTermCode": "4799GE89SK",
+     "sku": "K7BZRSJ6MQB8G63B",
+     "effectiveDate": "2026-07-01T00:00:00Z",
+     "priceDimensions": {
+      "K7BZRSJ6MQB8G63B.4799GE89SK.6YS6EN2CT7": {
+       "rateCode": "K7BZRSJ6MQB8G63B.4799GE89SK.6YS6EN2CT7",
+       "description": "AWS Marketplace software usage|us-east-1|Million Batch Response Tokens",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1M tokens",
+       "pricePerUnit": {
+        "USD": "7.5000000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   }
+  }
+ }
+}

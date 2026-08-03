@@ -71,16 +71,25 @@ export class MeteringStack extends cdk.Stack {
 
     const envPrefix = props.environmentPrefix ? `${props.environmentPrefix}-` : '';
 
-    // ── Price map: generated from the AWS Price List offer file ───────────
-    // (scripts/generate-price-map.py). Unpriced models debit tokens at $0 and
-    // raise the UnpricedModel alarm — never a silent guess (design M3).
-    const pricesPath = path.join(__dirname, '..', '..', 'config', 'model-prices.json');
-    const priceMap = JSON.parse(fs.readFileSync(pricesPath, 'utf-8'));
-    // The full map (~17 KB) exceeds Lambda's 4 KB env ceiling — bundle it into
-    // the debit Lambda's asset instead (same pattern as the interceptor).
-    const debitStagingDir = fs.mkdtempSync(path.join(os.tmpdir(), 'metering-debit-'));
-    fs.copyFileSync(path.join(__dirname, '..', '..', 'metering', 'debit', 'index.py'), path.join(debitStagingDir, 'index.py'));
-    fs.copyFileSync(pricesPath, path.join(debitStagingDir, 'model-prices.json'));
+    // ── Shared pricing package (metering/pricing/*.py) ─────────────────────
+    // Staged into every pricing consumer at synth (single-source design D6):
+    // one resolver for the settle path, the admission estimate, and the admin
+    // surface, so they can never disagree. Rates live ONLY in the DynamoDB
+    // catalog — no price snapshot ships inside any deployment artifact
+    // (Requirement 8.2). Unpriced models debit tokens at $0 and raise the
+    // UnpricedModel alarm — never a silent guess (design M3/D4).
+    const pricingSrcDir = path.join(__dirname, '..', '..', 'metering', 'pricing');
+    const stageWithPricing = (prefix: string, handlerDir: string): string => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+      fs.copyFileSync(path.join(handlerDir, 'index.py'), path.join(dir, 'index.py'));
+      fs.mkdirSync(path.join(dir, 'pricing'));
+      for (const f of fs.readdirSync(pricingSrcDir).filter((n) => n.endsWith('.py'))) {
+        fs.copyFileSync(path.join(pricingSrcDir, f), path.join(dir, 'pricing', f));
+      }
+      return dir;
+    };
+    const debitStagingDir = stageWithPricing(
+      'metering-debit-', path.join(__dirname, '..', '..', 'metering', 'debit'));
 
     // ── The single metering table ──────────────────────────────────────────
     this.table = new dynamodb.Table(this, 'MeteringTable', {
@@ -347,34 +356,33 @@ export class MeteringStack extends cdk.Stack {
     });
     driftAlarm.addAlarmAction(new cwactions.SnsAction(this.alertsTopic));
 
-    // ── Pricing refresher: keep the model pricing catalog current from the AWS
-    //    Price List Bulk API (docs/plans/metering-admin-console/02-PRICING-INVESTIGATION.md).
-    //    Writes PRICING#<model>/PUBLISHED rows; operator overrides (PRICING#/OVERRIDE)
-    //    are written by the admin API and win at settle time. Egress to the public
-    //    pricing.us-east-1.amazonaws.com offer files — no VPC, no auth needed.
-    // Bundle the curated frontier-model seed overrides into the refresher asset
-    // (config/model-price-overrides.json) — same pattern as the debit price map.
-    const refresherStagingDir = fs.mkdtempSync(path.join(os.tmpdir(), 'metering-pricing-refresher-'));
-    fs.copyFileSync(
-      path.join(__dirname, '..', '..', 'metering', 'pricing-refresher', 'index.py'),
-      path.join(refresherStagingDir, 'index.py'),
-    );
-    fs.copyFileSync(
-      path.join(__dirname, '..', '..', 'config', 'model-price-overrides.json'),
-      path.join(refresherStagingDir, 'model-price-overrides.json'),
-    );
+    // ── Pricing refresher: the single automated price source ───────────────
+    //    (.kiro/specs/metering-pricing-single-source/design.md). Reads the
+    //    three Bedrock offer files for this region (public HTTPS, no auth) and
+    //    bedrock:ListFoundationModels, writes model-id-keyed PRICING# rows and
+    //    the _UNMATCHED review queue. Operator overrides (PRICING#/OVERRIDE)
+    //    are written by the admin API, win at settle time, and are never
+    //    touched by a refresh.
+    const refresherStagingDir = stageWithPricing(
+      'metering-pricing-refresher-', path.join(__dirname, '..', '..', 'metering', 'pricing-refresher'));
     const pricingRefresherFn = new lambda.Function(this, 'PricingRefresherFn', {
       functionName: `${envPrefix}open-webui-metering-pricing-refresher`,
       runtime: lambda.Runtime.PYTHON_3_12,
       handler: 'index.handler',
       code: lambda.Code.fromAsset(refresherStagingDir),
-      timeout: cdk.Duration.minutes(2),
+      timeout: cdk.Duration.minutes(5),
       memorySize: 512,
       environment: { TABLE: this.table.tableName, REGION: cdk.Aws.REGION },
       logRetention: logs.RetentionDays.ONE_MONTH,
     });
     this.table.grantReadWriteData(pricingRefresherFn);
     pricingRefresherFn.addToRolePolicy(metricsPolicy);
+    // Model-id join needs the control-plane listing — read-only, no inference
+    // or mutation actions, no resource-level scoping exists for List* (Req 11.1).
+    pricingRefresherFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['bedrock:ListFoundationModels'],
+      resources: ['*'],
+    }));
     // Daily refresh (published rates change infrequently; overrides are instant).
     new events.Rule(this, 'PricingRefreshSchedule', {
       schedule: events.Schedule.rate(cdk.Duration.hours(24)),
@@ -391,6 +399,20 @@ export class MeteringStack extends cdk.Stack {
       treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
     });
     pricingRefreshAlarm.addAlarmAction(new cwactions.SnsAction(this.alertsTopic));
+    // Unresolved published rates are a work queue, not a page: warn so the
+    // operator binds them in the console (Req 3.3, design §8).
+    const pricingUnmatchedAlarm = new cloudwatch.Alarm(this, 'PricingUnmatchedAlarm', {
+      alarmName: `${envPrefix}open-webui-metering-pricing-unmatched`,
+      alarmDescription: 'Price List entries with no resolvable Bedrock model id — review the Unmatched queue on the console pricing page.',
+      metric: new cloudwatch.Metric({
+        namespace: 'Metering', metricName: 'PricingUnmatched',
+        statistic: 'Maximum', period: cdk.Duration.hours(24),
+      }),
+      threshold: 1,
+      evaluationPeriods: 1,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+    pricingUnmatchedAlarm.addAlarmAction(new cwactions.SnsAction(this.alertsTopic));
 
     // ── Admin API: the operator control surface, outside Open WebUI ────────
     // Serves the CLI (scripts/set-quota.sh) AND the admin console (console/).
@@ -399,7 +421,8 @@ export class MeteringStack extends cdk.Stack {
       functionName: `${envPrefix}open-webui-metering-admin`,
       runtime: lambda.Runtime.PYTHON_3_12,
       handler: 'index.handler',
-      code: lambda.Code.fromAsset(path.join(__dirname, '..', '..', 'metering', 'admin-api')),
+      code: lambda.Code.fromAsset(stageWithPricing(
+        'metering-admin-', path.join(__dirname, '..', '..', 'metering', 'admin-api'))),
       timeout: cdk.Duration.seconds(15),
       memorySize: 512,
       environment: {
@@ -408,7 +431,6 @@ export class MeteringStack extends cdk.Stack {
         ALERTS_TOPIC_ARN: this.alertsTopic.topicArn,
         ALARM_PREFIX: `${envPrefix}open-webui-metering`,
         ENFORCE_MODE: enforceMode,
-        PRICE_MAP_VERSION: String(priceMap.version),
         PRICING_REFRESHER_FN: pricingRefresherFn.functionName,
         HARD_DEFAULT_USD: '5',
         SOFT_DEFAULT_USD: '4',
@@ -490,6 +512,8 @@ export class MeteringStack extends cdk.Stack {
       ['/pricing', [apigwv2.HttpMethod.GET]],
       ['/pricing/{model}', [apigwv2.HttpMethod.PUT, apigwv2.HttpMethod.DELETE]],
       ['/pricing/refresh', [apigwv2.HttpMethod.POST]],
+      ['/pricing/alias', [apigwv2.HttpMethod.POST]],
+      ['/pricing/alias/{name}', [apigwv2.HttpMethod.DELETE]],
       ['/override', [apigwv2.HttpMethod.POST]],
       ['/counter-reset', [apigwv2.HttpMethod.POST]],
     ] as const) {
@@ -516,7 +540,7 @@ export class MeteringStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'MeteringTableName', { value: this.table.tableName });
     new cdk.CfnOutput(this, 'MeteringBusName', { value: this.bus.eventBusName });
     new cdk.CfnOutput(this, 'MeteringAlertsTopicArn', { value: this.alertsTopic.topicArn });
-    new cdk.CfnOutput(this, 'PriceMapVersion', { value: String(priceMap.version) });
+
     new cdk.CfnOutput(this, 'AdminApiUrl', { value: httpApi.apiEndpoint });
   }
 }

@@ -33,6 +33,7 @@ import hashlib
 import json
 import logging
 import os
+import sys
 import time
 import urllib.request
 
@@ -42,10 +43,18 @@ log.setLevel(logging.INFO)
 import boto3
 
 # ── Config ──────────────────────────────────────────────────────────────────
-# Large config (capability matrix, price map) ships as JSON files bundled into
-# this Lambda's asset by the CDK gateway stack — the 4 KB env-var ceiling can't
-# hold both. Env vars override for tests.
+# Large config (capability matrix) ships as a JSON file bundled into this
+# Lambda's asset by the CDK gateway stack — the 4 KB env-var ceiling can't
+# hold it. Env vars override for tests. Pricing comes from the DynamoDB
+# catalog through the shared resolver staged in ./pricing/ (design D6), so
+# the admission estimate and the settle path price identically (Req 8.4).
 _HERE = os.path.dirname(os.path.abspath(__file__))
+for _p in (_HERE, os.path.join(_HERE, "..", "..", "metering")):  # task root / repo tree
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+from pricing.identity import parse_model_ref  # noqa: E402
+from pricing.resolver import resolve_rate, unwrap_item  # noqa: E402
 
 
 def _bundled(name: str) -> dict:
@@ -77,12 +86,9 @@ GROUP_ORDER = [g for g in json.loads(os.environ.get("GROUP_ORDER", "[]")) if g !
 ]
 # conservative admission input estimate: bytes/4 (see track-d; no tokenizer in-path)
 EST_INPUT_DIVISOR = 4
-# price used for the floor estimate when the model is unpriced (worst-case-ish)
-EST_FALLBACK_IN = float(os.environ.get("EST_FALLBACK_IN_PER_TOKEN", "3e-06"))
-EST_FALLBACK_OUT = float(os.environ.get("EST_FALLBACK_OUT_PER_TOKEN", "1.5e-05"))
-PRICE_MAP = (
-    json.loads(os.environ["PRICE_MAP"]) if os.environ.get("PRICE_MAP") else _bundled("model-prices.json")
-).get("models", {})
+# admission estimates read the pricing catalog with a short per-container TTL
+# (rates move at refresh cadence; estimates only need to be roughly current)
+PRICING_CACHE_TTL = int(os.environ.get("PRICING_CACHE_TTL", "60"))
 
 INFERENCE_SUFFIXES = ("/chat/completions", "/responses", "/messages")
 
@@ -231,12 +237,51 @@ def _encode_body(parsed: dict, was_b64: bool) -> str:
     return base64.b64encode(raw.encode()).decode() if was_b64 else raw
 
 
-def _est_rate(model: str, direction: str) -> float:
-    entry = PRICE_MAP.get(model) or {}
-    v = (entry.get("standard") or {}).get(direction)
-    if v is not None:
-        return float(v)
-    return EST_FALLBACK_IN if direction == "input" else EST_FALLBACK_OUT
+_price_cache: dict = {}  # model key -> (fetched_ts, {"override":…, "published":…})
+
+
+def _catalog_entry(model_key: str) -> dict:
+    """OVERRIDE + PUBLISHED rows for one catalog key, TTL-cached per container.
+
+    Same two rows, same resolver as the debit Lambda — the estimate and the
+    settled charge draw from one store and one set of rules (Req 8.1, 8.4).
+    Fail-soft: a read error estimates at $0 and admits (never blocks on a
+    pricing outage — Req 8.5 removed the hardcoded fallback rates).
+    """
+    hit = _price_cache.get(model_key)
+    if hit and time.time() - hit[0] < PRICING_CACHE_TTL:
+        return hit[1]
+    entry = {"override": None, "published": None}
+    if ddb:
+        try:
+            resp = ddb.batch_get_item(RequestItems={TABLE: {"Keys": [
+                {"pk": {"S": f"PRICING#{model_key}"}, "sk": {"S": "OVERRIDE"}},
+                {"pk": {"S": f"PRICING#{model_key}"}, "sk": {"S": "PUBLISHED"}},
+            ]}})
+            for it in resp.get("Responses", {}).get(TABLE, []):
+                sk = it.get("sk", {}).get("S", "")
+                if sk == "OVERRIDE":
+                    entry["override"] = unwrap_item(it)
+                elif sk == "PUBLISHED":
+                    entry["published"] = unwrap_item(it)
+        except Exception as e:  # noqa: BLE001 — estimates must never block traffic
+            log.warning(f"pricing catalog read failed for {model_key}: {e}")
+    _price_cache[model_key] = (time.time(), entry)
+    return entry
+
+
+def _est_rates(model_raw: str) -> tuple[str, float, float]:
+    """(catalog key, $/input-token, $/output-token) for the admission estimate.
+
+    Routing is derived from the invoked id (Req 7.1) so the estimate prices
+    the same routing the settle path will. An unresolvable model estimates at
+    zero and is admitted — unpriced is a settle-path signal, not a block.
+    """
+    ref = parse_model_ref(model_raw)
+    entry = _catalog_entry(ref.key)
+    rin = resolve_rate(entry, "input", routing=ref.routing).per_token() or 0.0
+    rout = resolve_rate(entry, "output", routing=ref.routing).per_token() or 0.0
+    return ref.key, rin, rout
 
 
 def _read_state(sub: str, window: str, minute: str):
@@ -269,14 +314,14 @@ def _admit(sub: str, groups: list, body_bytes: int, parsed: dict, path: str) -> 
     rpm_used = int(items.get(f"RPM#{sub}#{minute}", {}).get("n", {}).get("N", "0"))
 
     # estimate: bytes/4 input + per-lane clamped output, priced (worst-case bound)
-    model = str(parsed.get("model", "")).split("/", 1)[-1]
+    _, rate_in, rate_out = _est_rates(str(parsed.get("model", "")))
     est_in_tokens = max(1, body_bytes // EST_INPUT_DIVISOR)
     if path.endswith("/responses"):
         out_field = "max_output_tokens"
     else:
         out_field = "max_tokens"
     est_out_tokens = min(int(parsed.get(out_field) or MAX_TOKENS_CLAMP), MAX_TOKENS_CLAMP)
-    est_usd = round(est_in_tokens * _est_rate(model, "input") + est_out_tokens * _est_rate(model, "output"), 8)
+    est_usd = round(est_in_tokens * rate_in + est_out_tokens * rate_out, 8)
 
     if hard > 0 and used >= hard:
         return False, _quota_error("resets on the 1st"), est_usd
@@ -306,7 +351,9 @@ def _floor_debit(sub: str, groups: list, est_usd: float, parsed: dict, path: str
     window = time.strftime("%Y-%m", time.gmtime(now))
     minute = time.strftime("%Y%m%d%H%M", time.gmtime(now))
     est_key = hashlib.sha256(f"{sub}#{body_hash}#{minute}".encode()).hexdigest()[:32]
-    model = str(parsed.get("model", "")).split("/", 1)[-1]
+    # EST rows carry the PARSED catalog key so the debit Lambda's estimate
+    # match (same sub + model) finds them regardless of gateway/profile prefixes
+    model = parse_model_ref(str(parsed.get("model", ""))).key
     lane = next((s.strip("/") for s in INFERENCE_SUFFIXES if path.endswith(s)), "unknown")
     billing_group = _billing_group(groups)
     # RPM tick FIRST — every admitted request counts against the rate bucket,
