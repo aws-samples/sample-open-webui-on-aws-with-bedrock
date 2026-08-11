@@ -125,6 +125,9 @@ if (meteringEnabled) {
   meteringStack.addDependency(gatewayStack);
 }
 
+// Open WebUI container image — configurable via -c openWebuiImage=…
+const openWebuiImage = getConfig('openWebuiImage');
+
 // Compute Stack
 const computeStack = new ComputeStack(app, `${prefix}Compute`, {
   env,
@@ -139,6 +142,7 @@ const computeStack = new ComputeStack(app, `${prefix}Compute`, {
   userPoolDomainName: `${cognitoDomainPrefix}.auth.${env.region}.amazoncognito.com`,
   domainName,
   certificateArn,
+  openWebuiImage,
   ecsDesiredCount: envConfig?.ecsDesiredCount,
   ecsMinCapacity: envConfig?.ecsMinCapacity,
   ecsMaxCapacity: envConfig?.ecsMaxCapacity,

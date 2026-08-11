@@ -441,8 +441,14 @@ if [[ "$SKIP_CDK_DEPLOY" != "true" ]]; then
     [[ -n "${MODEL_REFRESH_RATE_HOURS:-}" ]] && REFRESH_CTX+=(-c "modelRefreshRateHours=${MODEL_REFRESH_RATE_HOURS}")
     info "Model-capability refresher: ENABLED (enableModelRefresh=true)"
   fi
+
+  # Open WebUI image: configurable via .env OPEN_WEBUI_IMAGE; defaults to latest.
+  OWUI_IMAGE="${OPEN_WEBUI_IMAGE:-ghcr.io/open-webui/open-webui:latest}"
+  IMAGE_CTX=(-c "openWebuiImage=${OWUI_IMAGE}")
+  info "Open WebUI image: $OWUI_IMAGE"
+
   CDK_DEFAULT_ACCOUNT="$ACCOUNT_ID" CDK_DEFAULT_REGION="$AWS_REGION" \
-    $CDK deploy --all -c "metering=${METERING:-off}" "${REFRESH_CTX[@]}" --require-approval "$([ "$SKIP_CONFIRM" = "true" ] && echo never || echo broadening)"
+    $CDK deploy --all -c "metering=${METERING:-off}" "${REFRESH_CTX[@]}" "${IMAGE_CTX[@]}" --require-approval "$([ "$SKIP_CONFIRM" = "true" ] && echo never || echo broadening)"
   log "CDK deploy complete"
 fi
 

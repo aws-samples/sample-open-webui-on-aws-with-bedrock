@@ -20,13 +20,15 @@ import { Construct } from 'constructs';
 import { Asset } from 'aws-cdk-lib/aws-s3-assets';
 
 /**
- * The official Open WebUI image, pinned by digest (v0.10.2). This sample runs
- * the upstream image completely unmodified — the Amazon Bedrock integration is
- * delivered at runtime as an Open WebUI pipe function + OpenAI connections that
- * point at the AgentCore inference gateway. No fork, no patches, no image build.
- * Bump per docs/UPGRADE_RUNBOOK.md.
+ * Default Open WebUI image used when no override is provided via CDK context
+ * (-c openWebuiImage=…) or the .env OPEN_WEBUI_IMAGE variable. Accepts a tag
+ * (ghcr.io/open-webui/open-webui:latest) or a pinned digest
+ * (ghcr.io/open-webui/open-webui@sha256:…). The sample runs the upstream image
+ * completely unmodified — the Amazon Bedrock integration is delivered at runtime
+ * as an Open WebUI pipe function + OpenAI connections that point at the
+ * AgentCore inference gateway. No fork, no patches, no image build.
  */
-const OFFICIAL_IMAGE = 'ghcr.io/open-webui/open-webui@sha256:9fcea9c6e32ab60b0498f3986c6cdf651ddbe61db48d2213a3d28048ddd673d4';
+const DEFAULT_IMAGE = 'ghcr.io/open-webui/open-webui:latest';
 
 export interface ComputeStackProps extends cdk.StackProps {
   vpc: ec2.Vpc;
@@ -42,6 +44,11 @@ export interface ComputeStackProps extends cdk.StackProps {
   domainName?: string;
   /** ARN of an ACM certificate in us-east-1 for the custom domain. Required if domainName is set. */
   certificateArn?: string;
+  /**
+   * Open WebUI container image reference (tag or digest). Passed from .env via
+   * CDK context (-c openWebuiImage=…). Falls back to DEFAULT_IMAGE when unset.
+   */
+  openWebuiImage?: string;
   cpu?: number;
   memoryLimitMiB?: number;
   ecsDesiredCount?: number;
@@ -88,11 +95,12 @@ export class ComputeStack extends cdk.Stack {
     const enableAutoScaling = props.enableAutoScaling ?? true;
 
     // =====================
-    // Container Image — unmodified official Open WebUI, pinned by digest.
+    // Container Image — unmodified official Open WebUI, configurable via .env.
     // No Docker build anywhere; the Bedrock integration is seeded at runtime.
     // =====================
-    const containerImage = ecs.ContainerImage.fromRegistry(OFFICIAL_IMAGE);
-    const imageUriForOutput = OFFICIAL_IMAGE;
+    const imageUri = props.openWebuiImage ?? DEFAULT_IMAGE;
+    const containerImage = ecs.ContainerImage.fromRegistry(imageUri);
+    const imageUriForOutput = imageUri;
 
     // =====================
     // Secrets Manager
