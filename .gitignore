@@ -2,6 +2,8 @@
 .env
 infra/cdk.context.json
 infra/deploy.config.json
+security-scans/
+local_only/
 
 # Node
 node_modules/

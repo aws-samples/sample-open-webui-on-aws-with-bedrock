@@ -28,6 +28,7 @@ import logging
 import os
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 
@@ -113,6 +114,22 @@ def _gateway_url() -> str:
     return ssm.get_parameter(Name=GATEWAY_URL_PARAM)["Parameter"]["Value"].rstrip("/")
 
 
+def _urlopen_https(target, timeout: float):
+    """urlopen restricted to https (Bandit B310 / Ruff S310).
+
+    urlopen honors every scheme its installed openers support — `file:`, `ftp:`,
+    and custom schemes included — so a URL that is ever influenced by
+    configuration or another service could be turned into a local-file read.
+    The gateway URL here comes from an SSM parameter, so the scheme is checked
+    rather than assumed.
+    """
+    url = target.full_url if isinstance(target, urllib.request.Request) else str(target)
+    parts = urllib.parse.urlsplit(url)
+    if parts.scheme != "https" or not parts.hostname:
+        raise ValueError(f"refusing URL that is not https://<host>: {url[:80]}")
+    return urllib.request.urlopen(target, timeout=timeout)  # nosec B310 — scheme allowlisted above
+
+
 def _chat(token: str, url: str) -> tuple[int, dict]:
     body = json.dumps(
         {
@@ -128,7 +145,7 @@ def _chat(token: str, url: str) -> tuple[int, dict]:
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=45) as r:  # noqa: S310 — https gateway URL from SSM
+        with _urlopen_https(req, timeout=45) as r:
             return r.status, json.loads(r.read() or b"{}")
     except urllib.error.HTTPError as e:
         try:

@@ -44,6 +44,7 @@ import logging
 import os
 import sys
 import time
+import urllib.parse
 import urllib.request
 
 import boto3
@@ -91,9 +92,25 @@ def _metric(name: str, value: float = 1, unit: str = "Count"):
         log.warning(f"metric {name} failed: {e}")
 
 
+def _urlopen_https(target, timeout: float):
+    """urlopen restricted to https (Bandit B310 / Ruff S310).
+
+    urlopen honors every scheme its installed openers support — `file:`, `ftp:`,
+    and custom schemes included — so a URL that is ever influenced by
+    configuration or another service could be turned into a local-file read.
+    REGION below comes from the environment and is interpolated into the offer
+    URL, so the scheme is checked rather than assumed.
+    """
+    url = target.full_url if isinstance(target, urllib.request.Request) else str(target)
+    parts = urllib.parse.urlsplit(url)
+    if parts.scheme != "https" or not parts.hostname:
+        raise ValueError(f"refusing URL that is not https://<host>: {url[:80]}")
+    return urllib.request.urlopen(target, timeout=timeout)  # nosec B310 — scheme allowlisted above
+
+
 def _fetch_offer(svc: str) -> dict:
     url = OFFER_URL.format(svc=svc, region=REGION)
-    with urllib.request.urlopen(url, timeout=180) as r:  # noqa: S310 — fixed https AWS URL
+    with _urlopen_https(url, timeout=180) as r:
         return json.loads(r.read())
 
 

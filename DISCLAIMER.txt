@@ -1,0 +1,43 @@
+DISCLAIMER — SAMPLE CODE, NOT FOR PRODUCTION USE
+
+This repository is an AWS deployment sample. It is provided for demonstration,
+evaluation, and learning purposes. It has NOT been through an application
+security (AppSec) review, and nothing in this repository should be read as a
+claim that it is production-ready, production-grade, or otherwise suitable for
+production deployment as-is.
+
+The sample code; software libraries; command line tools; proofs of concept;
+templates; or other related technology (including any of the foregoing that are
+provided by our personnel) is provided to you as AWS Content under the AWS
+Customer Agreement, or the relevant written agreement between you and AWS
+(whichever applies). You should not use this AWS Content in your production
+accounts, or on production or other critical data. You are responsible for
+testing, securing, and optimizing the AWS Content, such as sample code, as
+appropriate for your production environment based on your specific quality
+control practices and standards. Deploying AWS Content may incur AWS charges
+for creating or using AWS chargeable resources, such as running Amazon EC2
+instances or using Amazon S3 storage.
+
+Before deploying any part of this sample outside a test environment, you are
+responsible for at minimum:
+
+  - conducting your own security review and threat modeling of the deployed
+    architecture, including the IAM policies, network boundaries, and identity
+    and authorization configuration;
+  - reviewing and hardening the defaults against your organization's
+    requirements (see the Security and Production Considerations sections of
+    docs/AWS_DEPLOYMENT_GUIDE.md);
+  - functional, load, failure-mode, and cost testing at your expected scale;
+  - reviewing the licenses and security posture of all third-party components
+    this sample deploys or depends on, including Open WebUI itself (see NOTICE
+    and THIRD-PARTY-LICENSES.md); and
+  - establishing your own operational practices for patching, backup and
+    restore, monitoring, incident response, and data retention.
+
+This sample deploys a third-party application (Open WebUI) that is not
+developed, maintained, or supported by AWS, and pulls it at deploy time from a
+third-party distribution channel. See NOTICE and THIRD-PARTY-LICENSES.md.
+
+Generative AI models can produce inaccurate or unexpected output. You are
+responsible for evaluating model output and for configuring appropriate
+safeguards, such as Amazon Bedrock Guardrails, for your use case.

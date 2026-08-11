@@ -35,6 +35,7 @@ import logging
 import os
 import sys
 import time
+import urllib.parse
 import urllib.request
 
 log = logging.getLogger()
@@ -123,8 +124,24 @@ def _b64url_to_int(s: str) -> int:
     return int.from_bytes(base64.urlsafe_b64decode(s + pad), "big")
 
 
+def _urlopen_https(target, timeout: float):
+    """urlopen restricted to https (Bandit B310 / Ruff S310).
+
+    urlopen honors every scheme its installed openers support — `file:`, `ftp:`,
+    and custom schemes included — so a URL that is ever influenced by
+    configuration or another service could be turned into a local-file read.
+    JWKS_URL arrives from the environment, and it decides which keys verify
+    caller tokens, so the scheme is checked here rather than assumed.
+    """
+    url = target.full_url if isinstance(target, urllib.request.Request) else str(target)
+    parts = urllib.parse.urlsplit(url)
+    if parts.scheme != "https" or not parts.hostname:
+        raise ValueError(f"refusing URL that is not https://<host>: {url[:80]}")
+    return urllib.request.urlopen(target, timeout=timeout)  # nosec B310 — scheme allowlisted above
+
+
 def _fetch_jwks():
-    with urllib.request.urlopen(JWKS_URL, timeout=3) as r:  # noqa: S310 — fixed https URL from env
+    with _urlopen_https(JWKS_URL, timeout=3) as r:
         data = json.loads(r.read())
     _jwks["keys"] = {k["kid"]: k for k in data.get("keys", [])}
     _jwks["fetched"] = time.time()
