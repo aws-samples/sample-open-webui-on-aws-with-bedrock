@@ -1,0 +1,15 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "What's new Kiro?",
+      "trigger": "SessionStart",
+      "description": "On Kiro startup, fetches the Kiro changelog RSS feed and prints any entries published since the last run so the agent can summarize what's new. Stays silent when there is nothing new.",
+      "action": {
+        "type": "command",
+        "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \".kiro/hooks/whats-new-kiro.ps1\"",
+        "timeout": 45
+      }
+    }
+  ]
+}

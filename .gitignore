@@ -77,3 +77,12 @@ console/tsconfig.tsbuildinfo
 
 # Generated operator/finance audit export (scripts/fetch-bedrock-pricing.py)
 config/bedrock-pricing-catalog.csv
+
+# Generated local security scan output
+aws-security-scans/
+
+# Kiro hook runtime state
+.kiro/hooks/.state/
+
+# Compiled Python native extensions
+*.so
