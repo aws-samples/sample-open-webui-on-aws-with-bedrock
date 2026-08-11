@@ -17,6 +17,8 @@ cost). CDK custom-resources Provider framework contract: return a dict.
 
 import json
 import logging
+import urllib.error
+import urllib.parse
 import urllib.request
 
 import boto3
@@ -27,17 +29,33 @@ log = logging.getLogger()
 log.setLevel(logging.INFO)
 
 
+def _urlopen_https(target, timeout: float):
+    """urlopen restricted to https (Bandit B310 / Ruff S310).
+
+    urlopen honors every scheme its installed openers support — `file:`, `ftp:`,
+    and custom schemes included — so a URL that is ever influenced by
+    configuration or another service could be turned into a local-file read.
+    The region below arrives as a CloudFormation resource property, so the
+    assembled endpoint's scheme is checked rather than assumed.
+    """
+    url = target.full_url if isinstance(target, urllib.request.Request) else str(target)
+    parts = urllib.parse.urlsplit(url)
+    if parts.scheme != "https" or not parts.hostname:
+        raise ValueError(f"refusing URL that is not https://<host>: {url[:80]}")
+    return urllib.request.urlopen(target, timeout=timeout)  # nosec B310 — scheme allowlisted above
+
+
 def _call(method: str, path: str, region: str, payload: dict | None = None) -> tuple[int, dict]:
     url = f"https://bedrock-mantle.{region}.api.aws{path}"
     data = json.dumps(payload).encode() if payload is not None else None
     req = AWSRequest(method=method, url=url, data=data, headers={"Content-Type": "application/json"})
     creds = boto3.Session().get_credentials().get_frozen_credentials()
     SigV4Auth(creds, "bedrock", region).add_auth(req)
-    http_req = urllib.request.Request(url, data=data, headers=dict(req.headers), method=method)  # noqa: S310
+    http_req = urllib.request.Request(url, data=data, headers=dict(req.headers), method=method)
     try:
-        with urllib.request.urlopen(http_req, timeout=30) as r:
+        with _urlopen_https(http_req, timeout=30) as r:
             return r.status, json.loads(r.read() or b"{}")
-    except urllib.error.HTTPError as e:  # type: ignore[attr-defined]
+    except urllib.error.HTTPError as e:
         return e.code, json.loads(e.read() or b"{}")
 
 

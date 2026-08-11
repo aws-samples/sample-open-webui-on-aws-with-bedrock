@@ -90,8 +90,17 @@ function handler(event) {
     const csp = [
       "default-src 'none'",
       "script-src 'self'",
-      // Cloudscape injects component styles at runtime → style-src needs inline
-      "style-src 'self' 'unsafe-inline'",
+      // style-src is 'self' only — no inline-style allowance. The Vite
+      // production build emits Cloudscape's CSS as a linked stylesheet
+      // (assets/index-*.css); the bundle creates no <style> nodes and writes no
+      // style attributes, and the app's few React `style={{…}}` props go
+      // through the CSSOM, which CSP does not govern. Cloudscape's runtime
+      // style injection lives in @cloudscape-design/theming-runtime and is
+      // reached only through the applyTheme() custom-theming API, which this
+      // console does not use. If you ever adopt applyTheme, that code path
+      // reads a nonce from <meta name="nonce"> — supply a per-response nonce
+      // instead of relaxing this directive.
+      "style-src 'self'",
       "img-src 'self' data:",
       "font-src 'self' data:",
       `connect-src 'self' https://cognito-idp.${stack.region}.amazonaws.com https://${props.userPoolDomainName}`,

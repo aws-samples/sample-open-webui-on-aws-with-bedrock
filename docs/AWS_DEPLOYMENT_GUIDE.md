@@ -10,6 +10,7 @@ This implementation guide provides an overview of deploying Open WebUI on Amazon
 - [Architecture](#architecture)
 - [Plan Your Deployment](#plan-your-deployment)
 - [Security](#security)
+- [Production Considerations](#production-considerations)
 - [Deployment](#deployment)
 - [Post-Deployment Configuration](#post-deployment-configuration)
 - [Operations and Monitoring](#operations-and-monitoring)
@@ -21,7 +22,9 @@ This implementation guide provides an overview of deploying Open WebUI on Amazon
 
 ## Overview
 
-This implementation guide provides an automated AWS Cloud Development Kit (AWS CDK) deployment of [Open WebUI](https://docs.openwebui.com/) onto Amazon Elastic Container Service (Amazon ECS) with Fargate. It is pre-configured with defaults that let most users quickly stand up a production-ready, self-hosted AI chat platform with Amazon Bedrock models available in the model dropdown.
+This implementation guide provides an automated AWS Cloud Development Kit (AWS CDK) deployment of [Open WebUI](https://docs.openwebui.com/) onto Amazon Elastic Container Service (Amazon ECS) with Fargate. It is pre-configured with defaults that let most users quickly stand up a self-hosted AI chat platform with Amazon Bedrock models available in the model dropdown, with production-oriented security features suitable for evaluation and customization before production use.
+
+> **This is sample code, not a production deployment.** It is provided for demonstration and evaluation purposes and has not been through an application security review. Before deploying it in a production environment, perform your own security review, threat modeling, and testing against your organization's requirements, and complete the hardening steps in [Security](#security) and [Production Considerations](#production-considerations). See [`DISCLAIMER.txt`](../DISCLAIMER.txt).
 
 The deployed container is the **completely unmodified official Open WebUI image**, pinned by digest (currently **v0.10.2**) and pulled from `ghcr.io/open-webui/open-webui` at deploy time. **There is no fork and no image build; the upstream code is not modified in any way** — Docker is not a prerequisite. The Amazon Bedrock integration is delivered entirely as AWS infrastructure plus runtime configuration:
 
@@ -223,6 +226,20 @@ Authentication uses Open WebUI's **built-in OIDC support** — Cognito is config
 6. Cognito groups are synced to Open WebUI groups (`ENABLE_OAUTH_GROUP_MANAGEMENT=true`).
 7. Role mapping: users in `admin`/`webui-admins`/`admins` Cognito groups → admin role, all others → user role (`OAUTH_ROLES_CLAIM=cognito:groups`).
 8. A session is established, and the user's OAuth token becomes available for the `system_oauth` connections that reach Bedrock through the gateway (per-user identity).
+
+### Production Considerations
+
+This repository is sample code. The defaults above are security-conscious, but they have not been through an application security review, and the sample is not certified for production use. Treat it as a starting point you own and harden, not a finished deployment. See [`DISCLAIMER.txt`](../DISCLAIMER.txt) for the full terms.
+
+Before deploying outside a test environment, at minimum:
+
+- **Run your own security review and threat model** of the deployed architecture — the IAM policies, network boundaries, Cognito configuration, gateway authorization, and the admin console's access control — against your organization's requirements.
+- **Review the third-party application.** Open WebUI is not developed, maintained, or supported by AWS. Evaluate its security posture and release cadence yourself, and own the version pin (see [`UPGRADE_RUNBOOK.md`](UPGRADE_RUNBOOK.md)). Vulnerabilities in the upstream image are yours to track and patch.
+- **Replace the demo-grade defaults.** Several resources use `RemovalPolicy.DESTROY` with `autoDeleteObjects` so the sample tears down cleanly; production data stores should use `RETAIN`, plus backups and a tested restore path. Review Aurora backup retention, log retention, and any lifecycle rules.
+- **Test at your expected scale,** including failure modes (Bedrock throttling, Aurora failover, Redis eviction, gateway or interceptor errors) and cost. See [`COST_ANALYSIS_20K_USERS.md`](COST_ANALYSIS_20K_USERS.md).
+- **Configure model safeguards.** Generative AI models can return inaccurate or unexpected output. Evaluate [Amazon Bedrock Guardrails](https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html) and AgentCore Policy for your use case, and decide your own data-retention and prompt-logging posture.
+- **Establish operational ownership** — patching, monitoring and alerting thresholds, incident response, and a documented on-call runbook. The alarms this sample creates are a starting set, not a complete operational baseline.
+- **Scan your own build.** Run dependency and container scanning in your pipeline; the sample pins versions at a point in time and does not track advisories on your behalf.
 
 ---
 

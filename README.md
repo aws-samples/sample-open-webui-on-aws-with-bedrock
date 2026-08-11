@@ -4,6 +4,15 @@ Deploy [Open WebUI](https://github.com/open-webui/open-webui) on AWS (Amazon ECS
 on Fargate) and connect it to Amazon Bedrock models through an **Amazon Bedrock
 AgentCore inference gateway** — an AWS deployment sample.
 
+> [!IMPORTANT]
+> **Sample code — not for production use.** This repository is provided for
+> demonstration and evaluation purposes. It has not been through an application
+> security review and is not suitable for production use as-is. Before deploying
+> it outside a test environment, run your own security review and threat model,
+> harden the defaults for your requirements, and test at your expected scale —
+> see [`DISCLAIMER.txt`](DISCLAIMER.txt) and
+> [Production Considerations](docs/AWS_DEPLOYMENT_GUIDE.md#production-considerations).
+
 > **About the application.** This is a deployment sample for the third-party
 > Open WebUI project by Open WebUI Inc. Open WebUI is **not included in this
 > repository** and is licensed separately under the Open WebUI License (see

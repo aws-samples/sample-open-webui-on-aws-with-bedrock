@@ -64,6 +64,7 @@ import gzip
 import json
 import re
 import sys
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -164,10 +165,20 @@ PLATFORM_PREFIXES = {
 
 
 def fetch_json(url: str, timeout: int = 180) -> dict:
+    """Fetch and decode a JSON offer file over https.
+
+    The scheme is allowlisted before the request is opened: urlopen honors every
+    scheme its installed openers support — `file:`, `ftp:`, and custom schemes
+    included — so an unchecked URL could be turned into a local-file read
+    (Bandit B310 / Ruff S310).
+    """
+    parts = urllib.parse.urlsplit(url)
+    if parts.scheme != "https" or not parts.hostname:
+        raise ValueError(f"refusing URL that is not https://<host>: {url[:80]}")
     req = urllib.request.Request(
         url, headers={"User-Agent": "bedrock-pricing-catalog/1.0", "Accept-Encoding": "gzip"}
     )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
+    with urllib.request.urlopen(req, timeout=timeout) as resp:  # nosec B310 — scheme allowlisted above
         raw = resp.read()
     if raw[:2] == b"\x1f\x8b":
         raw = gzip.decompress(raw)
