@@ -108,7 +108,7 @@ Implication for metering: **token usage cannot be observed at the gateway respon
     --start-time 2026-07-07 ... → Datapoints: []
   ```
   Two candidate explanations (recorded, not resolved): (a) interceptor-short-circuited requests (`GET /v1/models`, the bulk of pipe traffic) don't reach a target and may not emit data-plane invocation metrics; (b) inference-target invocations emit under an Operation/Protocol dimension combination that isn't discoverable via list-metrics because it has had no recent traffic, or aren't instrumented yet. Either way: **today we cannot even count our inference requests from CW metrics, let alone attribute per-user or per-token.**
-- Aside (footnote): list-metrics in this account also returns memory-ARN metrics from *other* AWS accounts (e.g. 474938223294, 323928187009) — likely the March-2026 "Observability: Cross-Account Monitoring" feature surfacing shared telemetry; irrelevant to our design but noted to avoid future confusion.
+- Aside (footnote): list-metrics in this account also returns memory-ARN metrics from *other* AWS accounts (account ids redacted) — likely the March-2026 "Observability: Cross-Account Monitoring" feature surfacing shared telemetry; irrelevant to our design but noted to avoid future confusion.
 
 ### Q3. Gateway log delivery / vended logs / traces
 

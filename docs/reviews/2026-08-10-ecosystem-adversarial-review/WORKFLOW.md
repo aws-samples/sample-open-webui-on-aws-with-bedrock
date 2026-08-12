@@ -80,7 +80,7 @@ Use only designated test deployments. Exercise buffered and streamed requests, t
 
 Safety gate:
 
-- Never use `prod-web`, `org-master`, a default profile, or any unnamed account.
+- Never use production or org-management profiles, a default profile, or any unnamed account.
 - Never delete by prefix or wildcard.
 - Teardown only a stack deployed by this run or an individually recorded resource created by this run.
 - Do not alter a live shared test stack until `cdk diff` identifies the exact impact.
