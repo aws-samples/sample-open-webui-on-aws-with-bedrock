@@ -128,6 +128,10 @@ if (meteringEnabled) {
 // Open WebUI container image — configurable via -c openWebuiImage=…
 const openWebuiImage = getConfig('openWebuiImage');
 
+// Fargate task sizing — deploy.sh forwards its --cpu/--memory flags here.
+const fargateCpu = getConfig('fargateCpu');
+const fargateMemory = getConfig('fargateMemory');
+
 // Compute Stack
 const computeStack = new ComputeStack(app, `${prefix}Compute`, {
   env,
@@ -143,6 +147,8 @@ const computeStack = new ComputeStack(app, `${prefix}Compute`, {
   domainName,
   certificateArn,
   openWebuiImage,
+  cpu: fargateCpu ? Number(fargateCpu) : undefined,
+  memoryLimitMiB: fargateMemory ? Number(fargateMemory) : undefined,
   ecsDesiredCount: envConfig?.ecsDesiredCount,
   ecsMinCapacity: envConfig?.ecsMinCapacity,
   ecsMaxCapacity: envConfig?.ecsMaxCapacity,

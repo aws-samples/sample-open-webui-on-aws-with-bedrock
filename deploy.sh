@@ -60,6 +60,7 @@ info()  { echo -e "${CYAN}[→]${NC} $*"; }
 header(){ echo -e "\n${BOLD}═══ $* ═══${NC}\n"; }
 
 usage() {
+  local exit_code="${1:-0}"
   cat <<EOF
 Usage: $(basename "$0") [OPTIONS]
 
@@ -89,26 +90,29 @@ The .env file is the source of truth for application configuration;
 infrastructure values (from CDK stack outputs) are auto-populated on first
 deploy.
 EOF
-  exit 0
+  exit "$exit_code"
 }
 
 # ── Parse CLI args ──────────────────────────────────────────
+# CLI_SET records which variables the CLI set, so load_env_file won't let
+# .env values silently clobber explicit flags (CLI > .env > defaults).
+CLI_SET=""
 while [[ $# -gt 0 ]]; do
   case $1 in
-    --profile)       AWS_PROFILE="$2"; shift 2;;
-    --region)        AWS_REGION="$2"; shift 2;;
-    --domain)        APP_DOMAIN="$2"; shift 2;;
-    --cert-arn)      CERTIFICATE_ARN="$2"; shift 2;;
-    --cpu)           FARGATE_CPU="$2"; shift 2;;
-    --memory)        FARGATE_MEMORY="$2"; shift 2;;
+    --profile)       AWS_PROFILE="$2"; CLI_SET+=" AWS_PROFILE"; shift 2;;
+    --region)        AWS_REGION="$2"; CLI_SET+=" AWS_REGION"; shift 2;;
+    --domain)        APP_DOMAIN="$2"; CLI_SET+=" APP_DOMAIN"; shift 2;;
+    --cert-arn)      CERTIFICATE_ARN="$2"; CLI_SET+=" CERTIFICATE_ARN"; shift 2;;
+    --cpu)           FARGATE_CPU="$2"; CLI_SET+=" FARGATE_CPU"; shift 2;;
+    --memory)        FARGATE_MEMORY="$2"; CLI_SET+=" FARGATE_MEMORY"; shift 2;;
     --env-file)      ENV_FILE="$2"; shift 2;;
     --env-only)      ENV_ONLY=true; SKIP_CDK_DEPLOY=true; SKIP_CDK_BOOTSTRAP=true; shift;;
     --skip-bootstrap) SKIP_CDK_BOOTSTRAP=true; shift;;
     --skip-cdk)      ENV_ONLY=true; SKIP_CDK_DEPLOY=true; SKIP_CDK_BOOTSTRAP=true; shift;;
     --metering)      METERING=on; shift;;
     --yes)           SKIP_CONFIRM=true; shift;;
-    --help)          usage;;
-    *) err "Unknown option: $1"; usage;;
+    --help)          usage 0;;
+    *) err "Unknown option: $1"; usage 1;;
   esac
 done
 
@@ -124,7 +128,8 @@ load_env_file() {
       key=$(echo "$key" | xargs)
       # Strip surrounding quotes from value
       value=$(echo "$value" | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")
-      # Only set if not already set by CLI args
+      # CLI flags win over .env for the variables they set
+      [[ " $CLI_SET " == *" $key "* ]] && continue
       export "$key=$value" 2>/dev/null || true
     done < "$ENV_FILE"
     log "Loaded .env configuration"
@@ -224,9 +229,6 @@ check_command() {
 # Infrastructure vars (DATABASE_HOST, REDIS_URL, etc.) are auto-populated from stack outputs.
 # Application vars from .env override defaults.
 build_ecs_env_overrides() {
-  local env_json="["
-  local first=true
-
   # Vars that are safe to pass as ECS environment (not secrets)
   # Infrastructure vars are set from stack outputs; .env can override application-level vars
   local APP_VARS=(
@@ -247,16 +249,19 @@ build_ecs_env_overrides() {
     HF_HUB_OFFLINE
   )
 
-  for var in "${APP_VARS[@]}"; do
-    local val="${!var:-}"
-    if [[ -n "$val" ]]; then
-      if [[ "$first" == "true" ]]; then first=false; else env_json+=","; fi
-      env_json+="{\"name\":\"$var\",\"value\":\"$val\"}"
-    fi
-  done
+  # Emit JSON via python3 so values containing quotes/backslashes can't
+  # produce malformed JSON (they are operator-controlled .env content).
+  APP_VAR_NAMES="${APP_VARS[*]}" python3 - <<'PYEOF'
+import json
+import os
 
-  env_json+="]"
-  echo "$env_json"
+entries = []
+for name in os.environ['APP_VAR_NAMES'].split():
+    value = os.environ.get(name, '')
+    if value:
+        entries.append({'name': name, 'value': value})
+print(json.dumps(entries))
+PYEOF
 }
 
 # ── Preflight checks ───────────────────────────────────────
@@ -287,7 +292,9 @@ if [[ "$ENV_ONLY" != "true" ]]; then
   # Profile selection
   if [[ -z "$AWS_PROFILE" ]]; then
     available_profiles=$(aws configure list-profiles 2>/dev/null || echo "default")
-    readarray -t profiles <<< "$available_profiles"
+    # portable line-splitting (readarray needs bash>=4; macOS ships 3.2)
+    profiles=()
+    while IFS= read -r line; do [[ -n "$line" ]] && profiles+=("$line"); done <<< "$available_profiles"
     if [[ ${#profiles[@]} -gt 1 ]]; then
       prompt_select AWS_PROFILE "Select AWS profile:" "${profiles[@]}"
     else
@@ -465,8 +472,13 @@ if [[ "$SKIP_CDK_DEPLOY" != "true" ]]; then
   IMAGE_CTX=(-c "openWebuiImage=${OWUI_IMAGE}")
   info "Open WebUI image: $OWUI_IMAGE"
 
+  # Fargate sizing (--cpu/--memory or .env FARGATE_CPU/FARGATE_MEMORY)
+  SIZE_CTX=(-c "fargateCpu=${FARGATE_CPU}" -c "fargateMemory=${FARGATE_MEMORY}")
+
+  # ${arr[@]+...} expansion: bash <4.4 treats an empty array as unset under
+  # set -u, so a bare "${REFRESH_CTX[@]}" would abort default deploys on macOS.
   CDK_DEFAULT_ACCOUNT="$ACCOUNT_ID" CDK_DEFAULT_REGION="$AWS_REGION" \
-    $CDK deploy --all -c "metering=${METERING:-off}" "${REFRESH_CTX[@]}" "${IMAGE_CTX[@]}" --require-approval "$([ "$SKIP_CONFIRM" = "true" ] && echo never || echo broadening)"
+    $CDK deploy --all -c "metering=${METERING:-off}" ${REFRESH_CTX[@]+"${REFRESH_CTX[@]}"} "${IMAGE_CTX[@]}" "${SIZE_CTX[@]}" --require-approval "$([ "$SKIP_CONFIRM" = "true" ] && echo never || echo broadening)"
   log "CDK deploy complete"
 fi
 
@@ -481,6 +493,14 @@ APP_IMAGE_URI=$(stack_output "OpenWebUI-Compute" "AppImageUri")
 USER_POOL_ID=$(stack_output "OpenWebUI-Auth" "UserPoolId")
 CLIENT_ID=$(stack_output "OpenWebUI-Auth" "UserPoolClientId")
 COGNITO_DOMAIN_OUT=$(stack_output "OpenWebUI-Auth" "CognitoDomain")
+
+# Fail fast if the stacks aren't there — otherwise empty values would be
+# written into .env and the first hard error would be a cryptic Cognito call.
+if [[ -z "$APP_URL" || -z "$USER_POOL_ID" || -z "$CLIENT_ID" ]]; then
+  err "Could not read stack outputs (OpenWebUI-Compute / OpenWebUI-Auth) in $AWS_REGION."
+  err "Are the stacks deployed in this account/region? For --env-only, run a full ./deploy.sh first."
+  exit 1
+fi
 
 log "App URL:           $APP_URL"
 log "CloudFront Domain: $CF_DOMAIN"
@@ -499,14 +519,36 @@ if [[ ! -f "$ENV_FILE" ]]; then
   fi
 fi
 
-# Update infrastructure values in .env (these come from CDK stack outputs)
+# Update infrastructure values in .env (these come from CDK stack outputs).
+# python3 instead of sed -i: values like WEBUI_AUTH_SIGNOUT_REDIRECT_URL
+# contain '&', which sed expands to the whole matched line (corrupting the
+# file on every redeploy), and BSD/macOS sed -i needs a suffix argument.
 update_env_var() {
   local key="$1" value="$2"
-  if grep -q "^${key}=" "$ENV_FILE" 2>/dev/null; then
-    sed -i "s|^${key}=.*|${key}=${value}|" "$ENV_FILE"
-  else
-    echo "${key}=${value}" >> "$ENV_FILE"
-  fi
+  ENV_KEY="$key" ENV_VALUE="$value" ENV_FILE_PATH="$ENV_FILE" python3 - <<'PYEOF'
+import os
+
+key = os.environ['ENV_KEY']
+value = os.environ['ENV_VALUE']
+path = os.environ['ENV_FILE_PATH']
+
+lines = []
+if os.path.exists(path):
+    with open(path) as f:
+        lines = f.read().splitlines()
+
+replaced = False
+for i, line in enumerate(lines):
+    if line.startswith(key + '='):
+        lines[i] = f'{key}={value}'
+        replaced = True
+        break
+if not replaced:
+    lines.append(f'{key}={value}')
+
+with open(path, 'w') as f:
+    f.write('\n'.join(lines) + '\n')
+PYEOF
 }
 
 update_env_var "WEBUI_URL" "$APP_URL"
@@ -571,17 +613,20 @@ TASK_DEF_ARN=$(aws_cmd ecs describe-services \
 info "Current task definition: $TASK_DEF_ARN"
 
 # Get the task def, merge env vars, register new revision
+TASKDEF_JSON=$(mktemp) && TASKDEF_NEW_JSON=$(mktemp)
+trap 'rm -f "$TASKDEF_JSON" "$TASKDEF_NEW_JSON"' EXIT
 aws_cmd ecs describe-task-definition --task-definition "$TASK_DEF_ARN" \
-  --query 'taskDefinition' --output json > /tmp/taskdef.json
+  --query 'taskDefinition' --output json > "$TASKDEF_JSON"
 
-python3 -c "
-import json, sys
+ENV_OVERRIDES_JSON="$ENV_OVERRIDES" TASKDEF_JSON="$TASKDEF_JSON" \
+  TASKDEF_NEW_JSON="$TASKDEF_NEW_JSON" python3 - <<'PYEOF'
+import json, os
 
-with open('/tmp/taskdef.json') as f:
+with open(os.environ['TASKDEF_JSON']) as f:
     td = json.load(f)
 
 # Merge .env overrides into container environment
-env_overrides = json.loads('''$ENV_OVERRIDES''')
+env_overrides = json.loads(os.environ['ENV_OVERRIDES_JSON'])
 override_keys = {e['name'] for e in env_overrides}
 
 # Deprecated vars to remove from previous task definitions
@@ -607,12 +652,12 @@ keep_fields = [
 ]
 new_td = {k: td[k] for k in keep_fields if k in td}
 
-with open('/tmp/taskdef-new.json', 'w') as f:
+with open(os.environ['TASKDEF_NEW_JSON'], 'w') as f:
     json.dump(new_td, f)
-"
+PYEOF
 
 NEW_TASK_DEF_ARN=$(aws_cmd ecs register-task-definition \
-  --cli-input-json file:///tmp/taskdef-new.json \
+  --cli-input-json "file://$TASKDEF_NEW_JSON" \
   --query 'taskDefinition.taskDefinitionArn' --output text)
 
 log "Registered new task definition: $NEW_TASK_DEF_ARN"
@@ -651,9 +696,6 @@ aws_cmd ecs wait services-stable \
   --services "$SERVICE_NAME" 2>/dev/null && \
   log "ECS service is stable" || \
   warn "Timed out waiting — check ECS console for status"
-
-# Clean up
-rm -f /tmp/taskdef.json /tmp/taskdef-new.json
 
 # ── Done ────────────────────────────────────────────────────
 header "Deployment Complete"
