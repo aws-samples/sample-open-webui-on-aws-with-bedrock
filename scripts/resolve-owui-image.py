@@ -60,8 +60,13 @@ def _info(msg: str) -> None:
 
 
 def _http(url: str, headers=None, method: str = 'GET'):
+    """urlopen restricted to https (Bandit B310): every URL this script opens
+    is one of the module's fixed https constants, but assert the scheme anyway
+    so a future edit can't silently introduce file:/ftp: handling."""
+    if not url.startswith('https://'):
+        raise ValueError(f'refusing URL that is not https://: {url[:80]}')
     req = urllib.request.Request(url, headers={'User-Agent': 'owui-sample-deploy', **(headers or {})}, method=method)
-    return urllib.request.urlopen(req, timeout=TIMEOUT)  # nosec B310 — fixed https URLs
+    return urllib.request.urlopen(req, timeout=TIMEOUT)  # nosec B310 — scheme allowlisted above
 
 
 def latest_release_tag() -> str:
