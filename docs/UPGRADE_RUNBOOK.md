@@ -1,77 +1,89 @@
 # Open WebUI Upstream Upgrade Runbook
 
-Repeatable process for bumping this sample's pinned upstream Open WebUI release.
+Repeatable process for upgrading (or pinning, or rolling back) the upstream
+Open WebUI release this sample deploys.
 
 ## How this sample tracks upstream
 
 This repository vendors **no upstream source** and builds **no image**. The
-deployed application is the **completely unmodified official Open WebUI image**,
-pinned by digest and pulled from `ghcr.io/open-webui/open-webui` at deploy time.
-The Amazon Bedrock integration is delivered entirely as AWS infrastructure +
-runtime configuration — an
+deployed application is the **completely unmodified official Open WebUI image**
+pulled from `ghcr.io/open-webui/open-webui`. The Amazon Bedrock integration is
+delivered entirely as AWS infrastructure + runtime configuration — an
 [AgentCore inference gateway](GATEWAY_INTEGRATION_GUIDE.md)
 plus a small [Claude pipe](../pipe/gateway_anthropic_pipe.py) and two OpenAI
 connections that [`pipe/seed.py`](../pipe/seed.py) writes into the app database
 at container start.
 
-So "upgrading" is just **moving the pin**. There is no source to vendor, no
-diffs to re-apply, no image to build, and no database migration chain to
-maintain — the app carries its own schema and applies its own migrations on
-start. The only real risk is that an upstream release changes something the
-seeder or the pipe depends on; step 2 covers exactly what to check.
+**Which version runs is decided in one place**: the `OPEN_WEBUI_IMAGE` variable
+in `.env` (untracked operator state, not a source file):
 
-The current pin is **v0.10.2** (2026-07-01), a release with upstream security
-and access-control fixes — pin at or above it.
+| `OPEN_WEBUI_IMAGE` | What deploys |
+|---|---|
+| unset *(the default)* | The **latest official Open WebUI release**. `deploy.sh` discovers the newest release tag and resolves it to its immutable `@sha256:` index digest at deploy time ([`scripts/resolve-owui-image.py`](../scripts/resolve-owui-image.py)). Requires reach to `api.github.com` and `ghcr.io` from the deploy machine; fails with an actionable error otherwise. |
+| a release tag, e.g. `ghcr.io/open-webui/open-webui:v0.11.0` | That release, resolved to its digest at deploy time. If `ghcr.io` is unreachable from the deploy machine, the tag is passed through unresolved with a loud warning (see the caution in step 3). |
+| a digest, e.g. `ghcr.io/open-webui/open-webui@sha256:…` | Exactly that image, verbatim — no network needed at resolution time. This is the reproducible form: use it for anything you care about, and for rollback. |
 
-## 1. Bump the pinned image
+Because the task definition carries a **digest** (on every path except the
+unreachable-registry fallback), every task launch — autoscaling, crash
+replacement, `--force-new-deployment` — runs byte-identical software. Nothing
+changes version until you deliberately run a deploy. A same-`.env` redeploy
+*is* an upgrade when the variable is unset, because the deploy re-resolves
+"latest release" at that moment; pin a digest if you don't want that.
 
-The digest lives in **exactly one code location**: the `OFFICIAL_IMAGE` constant
-near the top of [`infra/lib/compute-stack.ts`](../infra/lib/compute-stack.ts).
+Avoid `:latest` as a value: on ghcr it is upstream's **main-branch build**, not
+the newest release.
 
-Pick the new upstream **release tag** (`vX.Y.Z`, **not** `main`) and resolve its
-**multi-arch (index) digest**:
+So "upgrading" is just **deploying with a newer version selected**. There is no
+source to vendor, no diffs to re-apply, and no image to build. The real risks
+are (a) an upstream release changing something the seeder or pipe depends on
+(step 2) and (b) upstream's own database migrations (step 3).
+
+Run **v0.10.2 (2026-07-01) or newer** — that release carries upstream security
+and access-control fixes. The unset default (latest release) always satisfies
+this.
+
+## 1. Record what you're running, then choose the target
+
+Before changing anything, record the current image — it is your rollback
+target:
 
 ```bash
-# With Docker/buildx available:
-docker buildx imagetools inspect ghcr.io/open-webui/open-webui:vX.Y.Z
-# → read the "Digest:" of the manifest list (the sha256 for the tag itself).
+aws cloudformation describe-stacks --stack-name OpenWebUI-Compute \
+  --query "Stacks[0].Outputs[?OutputKey=='AppImageUri'].OutputValue" --output text
+# e.g. ghcr.io/open-webui/open-webui@sha256:9fcea9c6…   ← keep this
 ```
 
-If Docker isn't available, read the digest straight from the ghcr manifest API
-with the anonymous pull-token flow (curl + jq):
+(If earlier deploys used a tag rather than a digest, get the *running* digest
+from `aws ecs describe-tasks` → `containers[0].imageDigest` instead.)
 
-```bash
-TAG=vX.Y.Z
-# 1. Anonymous pull token for the public repo:
-TOKEN=$(curl -s "https://ghcr.io/token?scope=repository:open-webui/open-webui:pull&service=ghcr.io" | jq -r .token)
+Then choose the target version:
 
-# 2. HEAD the manifest and read the digest from the response header:
-curl -sI \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Accept: application/vnd.oci.image.index.v1+json" \
-  -H "Accept: application/vnd.docker.distribution.manifest.list.v2+json" \
-  "https://ghcr.io/v2/open-webui/open-webui/manifests/$TAG" \
-  | tr -d '\r' | awk -F': ' 'tolower($1)=="docker-content-digest"{print $2}'
-# → sha256:… — this is the same index digest buildx would report.
-```
+- **Track the latest release** — leave `OPEN_WEBUI_IMAGE` unset in `.env`.
+  Preview what "latest" currently is before deploying:
 
-Update the pin to the resolved digest, then refresh **every version reference**:
+  ```bash
+  python3 scripts/resolve-owui-image.py
+  # [resolve-owui-image] latest official release: vX.Y.Z
+  # [resolve-owui-image] resolved vX.Y.Z -> sha256:…
+  ```
 
-```
-infra/lib/compute-stack.ts   OFFICIAL_IMAGE = 'ghcr.io/open-webui/open-webui@sha256:…'
-                             (and the "(v0.10.2)" note in its doc comment)
-README.md                    the "(currently vX.Y.Z)" / "pin is vX.Y.Z" mentions
-docs/UPGRADE_RUNBOOK.md       this file's "current pin" line
-```
+- **Pin a specific release** — set the tag (resolved to a digest at deploy
+  time) or run the resolver yourself and set the digest form:
 
-Pin by **digest**, not by tag — the digest is what ECS actually pulls, and it's
-immutable.
+  ```bash
+  python3 scripts/resolve-owui-image.py ghcr.io/open-webui/open-webui:vX.Y.Z
+  # → ghcr.io/open-webui/open-webui@sha256:…   ← put this in .env
+  ```
+
+Release notes live at <https://github.com/open-webui/open-webui/releases>.
+Prefer release tags (`vX.Y.Z`) — never `main`, and not `:latest` (which is
+main).
 
 ## 2. Check for breaking changes that affect the integration
 
 Because the app is unmodified, the **only** things an upstream release can break
 are the surfaces this sample plugs into. Skim the release notes and diff
-`v0.10.2..vX.Y.Z` for material changes to:
+`<running version>..<target version>` for material changes to:
 
 - **`backend/open_webui/models/config.py`** — the seeder writes per-key rows to
   the `config` table: `openai.api_base_urls`, `openai.api_keys`,
@@ -91,24 +103,50 @@ are the surfaces this sample plugs into. Skim the release notes and diff
   user's bearer token.
 
 If any of these changed materially, **test the seeder against a dev deploy before
-prod** (deploy the new pin to a dev environment and confirm the pipe + both
-connections install and work — see step 5). If nothing relevant changed, the
-bump is a config-only pin change.
+your main environment** (deploy the target version to a scratch environment and
+confirm the pipe + both connections install and work — see step 5). If nothing
+relevant changed, the upgrade is a config-only version change.
 
-## 3. DB schema changes / no rolling old+new
+## 3. Snapshot the database — upstream migrates it on start
 
-Upstream ships its own migrations, which run automatically on container start.
-Some releases (v0.10.2 among them) ship **schema changes with a warning against
-running old and new application versions against one database simultaneously**.
-Keep this caution for every bump:
+Upstream ships its own schema migrations, and **they run automatically the
+moment a task with a newer release starts** — there is no separate "migrate"
+step you control, and no built-in downgrade path. Some releases (v0.10.2 among
+them) ship schema changes with an explicit upstream warning against running two
+application versions against one database simultaneously. Treat every release
+boundary as a database event:
 
-- **Snapshot the Aurora database** before deploying across a schema-changing
-  release.
-- Accept the **brief ECS rolling window**, or stop the old tasks first
-  (scale the service to 0, deploy, scale back up) so only one app version ever
-  touches the DB during the migration.
+- **Snapshot Aurora first, every time.** Not optional:
 
-Fresh installs are unaffected.
+  ```bash
+  aws rds create-db-cluster-snapshot \
+    --db-cluster-identifier <cluster-id> \
+    --db-cluster-snapshot-identifier pre-owui-<target-version>-$(date +%Y%m%d)
+  aws rds wait db-cluster-snapshot-available \
+    --db-cluster-snapshot-identifier pre-owui-<target-version>-$(date +%Y%m%d)
+  ```
+
+  Wait for `available` **before** the new image starts. A migration that goes
+  wrong is otherwise unrecoverable short of point-in-time restore.
+
+- **Minimize the old+new window.** The rolling ECS deployment briefly runs old
+  and new tasks side by side against one database. For releases whose notes
+  flag schema changes, don't accept that window: scale the service to 0, deploy,
+  scale back up — so only one app version ever touches the DB during the
+  migration.
+
+- **Know what protects you (and what doesn't).** Because the task definition
+  pins a digest, ordinary task churn can never start a newer release or run a
+  migration you didn't plan — version changes happen only at deploys. The one
+  exception: if the resolver warned it could not resolve your tag and passed it
+  through (restricted-egress deploy machine), the task definition floats and
+  any task launch may pull a newer build **and migrate the database
+  unplanned**. If you saw that warning and are running with a floating tag,
+  either accept that risk deliberately or switch to a digest pin now.
+
+- **Rollback ≠ downgrade.** Rolling the *image* back (step 6) does not roll the
+  *schema* back. Old app code usually tolerates additive migrations, but the
+  snapshot is your real undo. Fresh installs are unaffected by all of this.
 
 ## 4. (Optional) Refresh the model capability matrix
 
@@ -120,11 +158,11 @@ it and redeploy the Gateway stack:
 ```bash
 uv run --no-project --with boto3 python scripts/probe-model-capabilities.py
 # review + commit the updated config/model-capabilities.json, then:
-cd infra && npx cdk deploy '*GatewayStack*'
+cd infra && npx cdk deploy OpenWebUI-Gateway
 ```
 
-This is independent of the image bump — do it whenever you want new models, not
-only at upgrade time.
+This is independent of the image upgrade — do it whenever you want new models,
+not only at upgrade time.
 
 ## 5. Deploy and smoke-test
 
@@ -132,9 +170,18 @@ only at upgrade time.
 ./deploy.sh          # or your own CI running: cd infra && npx cdk deploy --all
 ```
 
-The only stack that changes for a pin bump is the Compute stack (new image
-digest → new task definition → rolling deploy; the service auto-rolls-back if the
-new tasks don't stabilize). Then verify manually:
+The deploy log prints the exact image it resolved — record it next to the
+rollback target from step 1:
+
+```
+[→] Open WebUI image: ghcr.io/open-webui/open-webui@sha256:…
+```
+
+The only stack that changes for a version bump is the Compute stack (new image
+reference → new task definition → rolling deploy). The service is protected by
+a deployment circuit breaker, a healthy-host deployment alarm, and a 5-minute
+bake window — a deployment that fails to stabilize rolls back to the previous
+task definition automatically. Then verify manually:
 
 - [ ] **OIDC login** — Cognito SSO completes at `/auth` and redirects home.
 - [ ] **Model dropdown populates from all three lanes** — Chat Completions and
@@ -147,15 +194,34 @@ new tasks don't stabilize). Then verify manually:
       response proves the connection/pipe contract still holds against the new
       release.
 
-If anything fails, revert the pin commit and redeploy the previous digest (ECS
-keeps the prior task-definition revision, and the deployment circuit breaker
-rolls back automatically on a failed stabilize).
+## 6. Roll back if anything fails
+
+The rollback target is the digest you recorded in step 1 (or the previous
+deploy's log line). In `.env`:
+
+```bash
+OPEN_WEBUI_IMAGE=ghcr.io/open-webui/open-webui@sha256:<previous digest>
+```
+
+then `./deploy.sh` again. There is no "pin commit" to revert — the selection
+lives in untracked `.env`, so rollback is an explicit redeploy of the recorded
+digest. (A deployment that never stabilized will usually have rolled itself
+back already via the circuit breaker/alarm; the manual path is for regressions
+that surface after the deployment completed.) Remember from step 3: this rolls
+the image back, not the schema — if the bad release migrated the database and
+the old version can't read it, restore the snapshot.
 
 ## Recommended cadence
 
-- **Monthly** — absorb the latest release tag (`vX.Y.Z`), not `main` HEAD.
+- **Every deploy is an upgrade opportunity.** With `OPEN_WEBUI_IMAGE` unset,
+  any full `./deploy.sh` re-resolves the latest release — so upgrades happen on
+  your schedule, at deploy time, never behind your back.
+- **Monthly** — deploy to absorb the newest release, following steps 1-5.
 - **Out-of-band** — on upstream security advisories (like v0.10.2's).
-- Pin **tags, not `main`**; tags are stable, reproducible targets.
+- **For environments you care about**, pin the resolved digest in `.env` and
+  move it deliberately; the unset default is the right choice for fresh
+  evaluations and demos.
+- Release tags only — never `main`, and `:latest` *is* main on ghcr.
 
 ## Metering module: upgrading through the single-source pricing change
 
