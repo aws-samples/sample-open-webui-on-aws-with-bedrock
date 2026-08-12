@@ -20,15 +20,20 @@ import { Construct } from 'constructs';
 import { Asset } from 'aws-cdk-lib/aws-s3-assets';
 
 /**
- * Default Open WebUI image used when no override is provided via CDK context
- * (-c openWebuiImage=…) or the .env OPEN_WEBUI_IMAGE variable. Accepts a tag
- * (ghcr.io/open-webui/open-webui:latest) or a pinned digest
- * (ghcr.io/open-webui/open-webui@sha256:…). The sample runs the upstream image
- * completely unmodified — the Amazon Bedrock integration is delivered at runtime
- * as an Open WebUI pipe function + OpenAI connections that point at the
- * AgentCore inference gateway. No fork, no patches, no image build.
+ * Fallback Open WebUI image, used only when no override reaches the stack via
+ * CDK context (-c openWebuiImage=…). The supported deploy path (./deploy.sh)
+ * always passes that context: it resolves the .env OPEN_WEBUI_IMAGE selection —
+ * or, when unset, the latest official release — to an immutable @sha256 digest
+ * (scripts/resolve-owui-image.py), so this constant only matters for bare
+ * `cdk deploy` runs. It points at a known release tag rather than :latest
+ * because ghcr's :latest is upstream's main-branch build, not a release.
+ *
+ * The sample runs the upstream image completely unmodified — the Amazon
+ * Bedrock integration is delivered at runtime as an Open WebUI pipe function +
+ * OpenAI connections that point at the AgentCore inference gateway. No fork,
+ * no patches, no image build.
  */
-const DEFAULT_IMAGE = 'ghcr.io/open-webui/open-webui:latest';
+const DEFAULT_IMAGE = 'ghcr.io/open-webui/open-webui:v0.11.0';
 
 export interface ComputeStackProps extends cdk.StackProps {
   vpc: ec2.Vpc;

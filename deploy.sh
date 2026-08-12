@@ -14,9 +14,11 @@ fi
 # Open WebUI — AWS End-to-End Deployment Script
 # ============================================================
 # Uses .env as the single source of truth for all configuration.
-# This sample runs the UNMODIFIED official Open WebUI image (pulled by digest
-# at deploy time). There is no image build. The Amazon Bedrock integration is
-# the AgentCore inference gateway (GatewayStack) plus a pipe function + two
+# This sample runs the UNMODIFIED official Open WebUI image. There is no image
+# build. The version comes from OPEN_WEBUI_IMAGE in .env (default: the latest
+# official release, resolved to an immutable digest at deploy time by
+# scripts/resolve-owui-image.py). The Amazon Bedrock integration is the
+# AgentCore inference gateway (GatewayStack) plus a pipe function + two
 # OpenAI connections seeded into the app database at container start.
 #
 # Usage:
@@ -77,7 +79,12 @@ Options:
   --help               Show this help
 
 No Docker or image build is involved — CDK deploys the unmodified official
-Open WebUI image by digest and provisions the AgentCore inference gateway.
+Open WebUI image and provisions the AgentCore inference gateway. The image
+version comes from OPEN_WEBUI_IMAGE in .env: unset it to deploy the latest
+official release, or set a vX.Y.Z tag or @sha256 digest to pin one. Tags are
+resolved to an immutable digest at deploy time (scripts/resolve-owui-image.py)
+so every task launch runs identical bytes until you deliberately upgrade —
+see docs/UPGRADE_RUNBOOK.md.
 The .env file is the source of truth for application configuration;
 infrastructure values (from CDK stack outputs) are auto-populated on first
 deploy.
@@ -256,9 +263,11 @@ build_ecs_env_overrides() {
 header "Preflight Checks"
 
 # No Docker required: this sample runs the unmodified official Open WebUI
-# image (pulled by digest at deploy time). The Bedrock integration is the
-# AgentCore inference gateway + a pipe function seeded at container start.
-for cmd in aws node npm; do
+# image (the version selected by OPEN_WEBUI_IMAGE, resolved to a digest at
+# deploy time). The Bedrock integration is the AgentCore inference gateway +
+# a pipe function seeded at container start. python3 is used for the image
+# resolution, deploy.config.json writes, and the task-definition env merge.
+for cmd in aws node npm python3; do
   check_command "$cmd"
   log "$cmd found: $(command -v "$cmd")"
 done
@@ -429,7 +438,7 @@ if [[ "$SKIP_CDK_DEPLOY" != "true" ]]; then
   else
     info "Deploying all stacks (Network → Data → Auth → Gateway → Compute)..."
   fi
-  info "No image build — ECS pulls the unmodified official Open WebUI image by digest."
+  info "No image build — ECS pulls the unmodified official Open WebUI image."
   # The model-refresher Lambda is enabled by the CDK context flag
   # `enableModelRefresh`. Forward it from the ENABLE_MODEL_REFRESH env var (.env
   # or shell) so the same switch that vendored its deps above also deploys it —
@@ -442,8 +451,17 @@ if [[ "$SKIP_CDK_DEPLOY" != "true" ]]; then
     info "Model-capability refresher: ENABLED (enableModelRefresh=true)"
   fi
 
-  # Open WebUI image: configurable via .env OPEN_WEBUI_IMAGE; defaults to latest.
-  OWUI_IMAGE="${OPEN_WEBUI_IMAGE:-ghcr.io/open-webui/open-webui:latest}"
+  # Open WebUI image: selected via .env OPEN_WEBUI_IMAGE (tag or digest); unset
+  # means "the latest official release". scripts/resolve-owui-image.py turns the
+  # selection into an immutable @sha256 digest reference so the task definition
+  # is deterministic — every task launch (autoscaling, crash replacement,
+  # redeploys) runs identical bytes until the operator deliberately upgrades.
+  # An explicit digest skips the network; an unresolvable tag proceeds with a
+  # warning; the unset default fails hard rather than guess.
+  OWUI_IMAGE=$(python3 "$SCRIPT_DIR/scripts/resolve-owui-image.py" ${OPEN_WEBUI_IMAGE:+"$OPEN_WEBUI_IMAGE"}) || {
+    err "Open WebUI image resolution failed (see message above)."
+    exit 1
+  }
   IMAGE_CTX=(-c "openWebuiImage=${OWUI_IMAGE}")
   info "Open WebUI image: $OWUI_IMAGE"
 
