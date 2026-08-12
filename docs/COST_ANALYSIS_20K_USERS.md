@@ -362,7 +362,7 @@ Our solution is **20-40x cheaper** than per-seat SaaS alternatives because we pa
 
 ### Phase 1: Pilot (Semester 1, ~2,000 users)
 - **Models:** Claude Haiku 4.5 (default) + Nova Pro (cost-conscious option)
-- **Usage budgets:** plan for 25K daily / 500K monthly tokens per user (see §5 — enforcement external to this sample)
+- **Usage budgets:** plan for 25K daily / 500K monthly tokens per user (see §4 — enforced by the opt-in metering module, or the coarser AWS-native ceilings without it)
 - **Infrastructure:** Minimum config (1-3 ECS tasks, 0.5-2 ACU Aurora)
 - **Estimated cost:** $800-1,500/month
 - **Goal:** Establish usage baselines, gather feedback
@@ -395,6 +395,6 @@ Our solution is **20-40x cheaper** than per-seat SaaS alternatives because we pa
 
 5. **Token budgets provide a hard cost ceiling** — enforced by the opt-in metering module (docs/METERING.md), or by the coarser §4 controls without it.
 
-6. **Usage is seasonal.** Expect 2x spikes during peak periods (e.g., midterms and finals). Auto-scaling infrastructure handles this; bound the proportional LLM cost spike with the §5 controls.
+6. **Usage is seasonal.** Expect 2x spikes during peak periods (e.g., midterms and finals). Auto-scaling infrastructure handles this; bound the proportional LLM cost spike with the §4 controls.
 
 7. **VPC interface endpoints are a hidden $87/month cost.** Evaluate whether all are needed or if NAT Gateway can handle some traffic.

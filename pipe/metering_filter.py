@@ -95,9 +95,11 @@ class Filter:
     def _oauth_sub(user: dict) -> str:
         """The Cognito subject — the SAME identity the gateway interceptor
         counters key on. Open WebUI's UserModel carries it as
-        oauth = {"<provider>": {"sub": "..."}} (v0.10.2); there is no flat
-        oauth_sub field. Fall back to the app-internal user id (attribution
-        still works, but won't join with interceptor-side counters)."""
+        oauth = {"<provider>": {"sub": "..."}} (observed in v0.10.x; no flat
+        oauth_sub field as of that release — the nested walk plus the fallback
+        below tolerate shape changes). Fall back to the app-internal user id
+        (attribution still works, but won't join with interceptor-side
+        counters)."""
         oauth = user.get("oauth") or {}
         if isinstance(oauth, dict):
             for entry in oauth.values():
