@@ -12,7 +12,7 @@ SPDX-License-Identifier: MIT-0
 - **Console:** React, TypeScript, Vite, and Cloudscape for the optional metering administration and self-service UI.
 - **Deployment:** Bash `deploy.sh` orchestrates AWS account/region selection, CDK bootstrap/deploy, dependency vendoring, stack-output collection, and ECS environment updates.
 - **AWS services:** ECS Fargate, CloudFront, internal ALB, VPC, Aurora PostgreSQL with pgvector, ElastiCache Redis, S3, DynamoDB, EventBridge, SQS, Secrets Manager, Cognito, Lambda, Bedrock, and Bedrock AgentCore.
-- **Application:** Official Open WebUI container pinned by digest; there is no Docker build in this repository.
+- **Application:** Official Open WebUI container, operator-selectable via `OPEN_WEBUI_IMAGE` in `.env` (default: latest official release) and resolved to an immutable digest at deploy time by `scripts/resolve-owui-image.py`; there is no Docker build in this repository.
 
 ## Code conventions
 

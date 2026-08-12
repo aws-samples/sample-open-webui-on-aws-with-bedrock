@@ -19,7 +19,7 @@ This repository is an AWS deployment sample for running the **unmodified officia
 
 ## Product constraints
 
-- Preserve the upstream, digest-pinned Open WebUI image model; do not add an application fork or image build without an explicit architecture change.
+- Preserve the unmodified upstream Open WebUI image model: no fork, no patches, no image build, obtained from the official distribution channel. The deployed version is operator-selectable (`OPEN_WEBUI_IMAGE`, default = latest official release) and resolved to an immutable digest at deploy time; do not reintroduce a hardcoded pin or add an image build without an explicit architecture change.
 - Keep model compatibility data separate from routing code and regenerate the capability matrix through `scripts/probe-model-capabilities.py`.
 - Preserve end-to-end per-user identity and private-network/security boundaries when changing authentication, gateway, or compute behavior.
 - Keep metering optional and preserve its explicit availability-first posture unless an architecture decision changes the enforcement contract.
