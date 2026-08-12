@@ -31,14 +31,18 @@ Or use the automated deploy script from the repo root:
 
 ## Container image
 
-The Compute stack runs the **unmodified official Open WebUI image**, pinned by
-digest in the `OFFICIAL_IMAGE` constant at the top of
-[`lib/compute-stack.ts`](lib/compute-stack.ts) (currently v0.10.2). There is no
-image build — ECS pulls the image straight from `ghcr.io/open-webui/open-webui`.
-The Amazon Bedrock integration is the Gateway stack plus a pipe function and two
-OpenAI connections seeded into the app at container start (see
-[`../pipe/`](../pipe/)). Move the pin with
-[`../docs/UPGRADE_RUNBOOK.md`](../docs/UPGRADE_RUNBOOK.md).
+The Compute stack runs the **unmodified official Open WebUI image** from
+`ghcr.io/open-webui/open-webui` — there is no image build. The version comes
+from the `openWebuiImage` CDK context value, which `deploy.sh` sets from the
+`OPEN_WEBUI_IMAGE` variable in `.env` after resolving it to an immutable
+`@sha256:` digest (`scripts/resolve-owui-image.py`); when the variable is
+unset, the deploy resolves the **latest official release**. If no context is
+supplied at all (bare `cdk deploy` without the script), the stack falls back
+to the `DEFAULT_IMAGE` release tag pinned at the top of
+[`lib/compute-stack.ts`](lib/compute-stack.ts). The Amazon Bedrock integration
+is the Gateway stack plus a pipe function and two OpenAI connections seeded
+into the app at container start (see [`../pipe/`](../pipe/)). Upgrades and
+rollback: [`../docs/UPGRADE_RUNBOOK.md`](../docs/UPGRADE_RUNBOOK.md).
 
 ## Configuration
 
@@ -50,8 +54,15 @@ OpenAI connections seeded into the app at container start (see
 
 | Flag | Default | Effect |
 |---|---|---|
+| `openWebuiImage` | `DEFAULT_IMAGE` in `lib/compute-stack.ts` | Open WebUI image reference (tag or `@sha256:` digest) for the Compute stack. `deploy.sh` always passes this, pre-resolved to a digest. |
+| `metering` | `off` | `on` synthesizes and wires the opt-in `OpenWebUI-Metering` stack (`deploy.sh --metering`, [docs/METERING.md](../docs/METERING.md)). |
 | `enableModelRefresh` | `false` | Adds the scheduled model-capability refresher (Lambda + EventBridge schedule + SNS topic) to the Gateway stack. When `false`, none of these resources exist. See [the gateway guide](../docs/GATEWAY_INTEGRATION_GUIDE.md#operational-notes). |
 | `modelRefreshRateHours` | `24` | Refresher cadence, in hours (only when `enableModelRefresh=true`). |
+| `domainName` / `certificateArn` | — | Custom domain + ACM cert (us-east-1); normally persisted in `deploy.config.json` by `deploy.sh` rather than passed by hand. |
+| `meteringMode` | `enforce` | `observe` makes the metering interceptor log-only ([docs/METERING.md](../docs/METERING.md)). |
+| `meteringGsiPhase` | — | Staged DynamoDB GSI rollout for the metering table (see metering-stack.ts). |
+| `cloudfrontPrefixListId` | auto | Override the CloudFront origin-facing managed prefix list id if lookup fails in your partition/region. |
+| `environment` | — | `dev` / `prod` presets (`lib/environment-config.ts`): prefixes stack and resource names, sets capacity. **Not supported by `deploy.sh`**, which targets the default (unprefixed) stack names — use bare `cdk deploy` end to end if you adopt it. |
 
 Pass with `-c`, e.g. `./deploy.sh` after `npx cdk deploy -c enableModelRefresh=true`,
 or add to `cdk.context.json`. `deploy.sh` vendors the refresher's Python deps

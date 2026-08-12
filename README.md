@@ -19,10 +19,14 @@ AgentCore inference gateway** — an AWS deployment sample.
 > [`NOTICE`](NOTICE) and [`THIRD-PARTY-LICENSES.md`](THIRD-PARTY-LICENSES.md)).
 >
 > The deployed container is the **completely unmodified official Open WebUI
-> image**, pinned by digest (currently **v0.10.2**) and pulled from
-> `ghcr.io/open-webui/open-webui` at deploy time. There is **no fork, no
-> patches, and no image build**. The Amazon Bedrock integration is delivered
-> entirely as AWS infrastructure + runtime configuration:
+> image**, pulled from `ghcr.io/open-webui/open-webui` at deploy time. There is
+> **no fork, no patches, and no image build**. By default a deploy runs the
+> **latest official Open WebUI release**, resolved to an immutable digest at
+> deploy time; set `OPEN_WEBUI_IMAGE` in `.env` to pin a specific release tag
+> or digest instead (see
+> [`docs/UPGRADE_RUNBOOK.md`](docs/UPGRADE_RUNBOOK.md)). The Amazon Bedrock
+> integration is delivered entirely as AWS infrastructure + runtime
+> configuration:
 >
 > 1. an **AgentCore inference gateway** that fronts Amazon Bedrock's
 >    OpenAI-compatible endpoint, authenticated per-user via Amazon Cognito; and
@@ -34,9 +38,10 @@ AgentCore inference gateway** — an AWS deployment sample.
 > (interceptor + provisioner Lambdas), [`pipe/`](pipe/) (the Claude pipe + seeder),
 > [`config/`](config/), [`scripts/`](scripts/), and [`docs/`](docs/).
 
-The upstream pin is **v0.10.2** because that release contains upstream security
-and access-control fixes; [`docs/UPGRADE_RUNBOOK.md`](docs/UPGRADE_RUNBOOK.md)
-covers moving the pin.
+Run **v0.10.2 or newer** (the default — the latest release — always satisfies
+this): that release contains upstream security and access-control fixes.
+[`docs/UPGRADE_RUNBOOK.md`](docs/UPGRADE_RUNBOOK.md) covers how version
+selection, upgrades, and rollback work.
 
 ## Why a gateway?
 
@@ -74,7 +79,7 @@ functional in the Open WebUI dropdown with per-user identity end to end.
 │                    ┌───────────▼───────────┐    ┌────────────────────┐    │
 │                    │  ECS Fargate            │    │  Aurora PostgreSQL  │    │
 │                    │  UNMODIFIED official     │◄──►│  (pgvector)         │    │
-│                    │  Open WebUI (v0.10.2)    │    └────────────────────┘    │
+│                    │  Open WebUI image        │    └────────────────────┘    │
 │                    │  + Claude pipe +        │    ┌────────────────────┐    │
 │                    │    2 OpenAI connections │◄──►│  ElastiCache Redis  │    │
 │                    └───────┬─────────────────┘    └────────────────────┘    │
@@ -115,8 +120,9 @@ with [`scripts/probe-model-capabilities.py`](scripts/probe-model-capabilities.py
 
 - An AWS account with **Amazon Bedrock model access** enabled for the models you
   want ([Bedrock console → Model access](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html)).
-- **AWS CLI v2**, **Node.js 20+**, and **npm**. (No Docker — there is no image
-  build.)
+- **AWS CLI v2**, **Node.js 20+**, **npm**, and **python3 + pip** (used by
+  `deploy.sh` for image-version resolution and Lambda dependency vendoring).
+  No Docker — there is no image build.
 - CDK bootstrapped in your target account/region (`npx cdk bootstrap`), or let
   `deploy.sh` do it.
 - A region where both Amazon Bedrock (`bedrock-mantle`) and CloudFront VPC
@@ -137,6 +143,11 @@ cd sample-open-webui-on-aws-with-bedrock
 cp .env.example .env      # review; no Bedrock vars needed (gateway handles it)
 ./deploy.sh               # interactive: pick profile + region, then deploy
 ```
+
+By default this deploys the **latest official Open WebUI release**, resolved to
+an immutable image digest at deploy time. To pin a version, set
+`OPEN_WEBUI_IMAGE` in `.env` to a release tag or `@sha256:` digest (see
+[`docs/UPGRADE_RUNBOOK.md`](docs/UPGRADE_RUNBOOK.md)).
 
 `deploy.sh` deploys five CDK stacks (Network → Data → Auth → Gateway → Compute),
 then prints the CloudFront URL. First deploy takes ~25–35 min (Aurora + Redis +

@@ -26,18 +26,18 @@ This implementation guide provides an automated AWS Cloud Development Kit (AWS C
 
 > **This is sample code, not a production deployment.** It is provided for demonstration and evaluation purposes and has not been through an application security review. Before deploying it in a production environment, perform your own security review, threat modeling, and testing against your organization's requirements, and complete the hardening steps in [Security](#security) and [Production Considerations](#production-considerations). See [`DISCLAIMER.txt`](../DISCLAIMER.txt).
 
-The deployed container is the **completely unmodified official Open WebUI image**, pinned by digest (currently **v0.10.2**) and pulled from `ghcr.io/open-webui/open-webui` at deploy time. **There is no fork and no image build; the upstream code is not modified in any way** — Docker is not a prerequisite. The Amazon Bedrock integration is delivered entirely as AWS infrastructure plus runtime configuration:
+The deployed container is the **completely unmodified official Open WebUI image**, pulled from `ghcr.io/open-webui/open-webui` at deploy time. **There is no fork and no image build; the upstream code is not modified in any way** — Docker is not a prerequisite. By default a deploy runs the **latest official Open WebUI release**, resolved to an immutable image digest at deploy time; the `OPEN_WEBUI_IMAGE` variable in `.env` pins a specific release tag or digest instead. The Amazon Bedrock integration is delivered entirely as AWS infrastructure plus runtime configuration:
 
 1. an **AgentCore inference gateway** (its own CDK stack) that fronts Amazon Bedrock's OpenAI-compatible endpoint (`bedrock-mantle`), authenticated per user with Amazon Cognito JWTs; and
 2. a small Open WebUI **Claude pipe function** plus **two native OpenAI connections**, all seeded into the app database at container start by [`pipe/seed.py`](../pipe/seed.py).
 
-The upstream pin is **v0.10.2** because that release contains upstream security and access-control fixes; [`UPGRADE_RUNBOOK.md`](UPGRADE_RUNBOOK.md) covers moving the pin. For the full technical design of the gateway, interceptor, capability matrix, and pipe, see the companion [`GATEWAY_INTEGRATION_GUIDE.md`](GATEWAY_INTEGRATION_GUIDE.md).
+Run **v0.10.2 or newer** (the default — the latest release — always satisfies this): that release contains upstream security and access-control fixes. [`UPGRADE_RUNBOOK.md`](UPGRADE_RUNBOOK.md) covers version selection, upgrades, and rollback. For the full technical design of the gateway, interceptor, capability matrix, and pipe, see the companion [`GATEWAY_INTEGRATION_GUIDE.md`](GATEWAY_INTEGRATION_GUIDE.md).
 
 ### Features and Benefits
 
 - **Per-user identity to Amazon Bedrock** — Every model call reaches Bedrock as the logged-in user. The AgentCore gateway's `CUSTOM_JWT` authorizer trusts the deployment's Cognito user pool and validates the user's own OAuth token (Open WebUI's `system_oauth` connection auth) on every request — ready for [AgentCore Policy](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy.html) (Cedar), Guardrails, and per-user throttling, with no static API keys.
 - **Only-working models in the dropdown** — Bedrock models don't all share the same API (Anthropic Claude is Messages-only, the GPT-5.x family is Responses-only, most others are Chat Completions). A gateway interceptor filters the model listing per connection so Open WebUI only ever surfaces models that actually work.
-- **Unmodified upstream image** — The official Open WebUI release runs as-is, pinned by digest. No build pipeline, no patched code, no drift from upstream; moving the version pin is a one-line change (see the upgrade runbook).
+- **Unmodified upstream image** — The official Open WebUI release runs as-is. No build pipeline, no patched code, no drift from upstream. The deployed version is operator-selectable in one place (`OPEN_WEBUI_IMAGE` in `.env`, resolved to an immutable digest at deploy time); see the upgrade runbook.
 - **Enterprise SSO authentication** — Amazon Cognito via Open WebUI's built-in OIDC support. Group-based role mapping syncs Cognito groups to Open WebUI roles and groups on every login. Zero custom auth code.
 - **Group-based model access control** — Restrict which models are available to which Cognito groups using Open WebUI's native RBAC (Workspace → Models).
 - **Fully private networking** — Internal ALB with CloudFront VPC origin. No public-facing load balancer. All data-plane traffic stays within the VPC.
@@ -48,7 +48,7 @@ The upstream pin is **v0.10.2** because that release contains upstream security 
 
 - **Enterprise AI chat platform** — Provide employees with a ChatGPT-like interface backed by Amazon Bedrock models, with SSO authentication and per-user identity end to end.
 - **Multi-model evaluation** — Compare responses across Claude, and the many Chat Completions / Responses models on `bedrock-mantle`, side-by-side in a single interface.
-- **Governed AI access** — SSO-gated access with group-based model restrictions and per-user identity at the gateway; pair with AWS-native cost controls (Bedrock service quotas, CloudWatch usage metrics, AWS Budgets — no application-level quota enforcement is included in this sample).
+- **Governed AI access** — SSO-gated access with group-based model restrictions and per-user identity at the gateway. Pair with AWS-native cost controls (Bedrock service quotas, CloudWatch usage metrics, AWS Budgets), or enable the opt-in metering module (`./deploy.sh --metering`, [`METERING.md`](METERING.md)) for per-user quotas enforced at the gateway.
 
 ---
 
@@ -71,7 +71,7 @@ The upstream pin is **v0.10.2** because that release contains upstream security 
 │                    ┌───────────▼───────────┐    ┌────────────────────┐    │
 │                    │  ECS Fargate            │    │  Aurora PostgreSQL  │    │
 │                    │  UNMODIFIED official     │◄──►│  (pgvector)         │    │
-│                    │  Open WebUI (v0.10.2)    │    └────────────────────┘    │
+│                    │  Open WebUI image        │    └────────────────────┘    │
 │                    │  + Claude pipe +        │    ┌────────────────────┐    │
 │                    │    2 OpenAI connections │◄──►│  ElastiCache Redis  │    │
 │                    └───────┬─────────────────┘    └────────────────────┘    │
@@ -92,7 +92,7 @@ The upstream pin is **v0.10.2** because that release contains upstream security 
 
 1. End users access the application through an Amazon CloudFront distribution, which provides HTTPS termination, CDN caching for static assets, and optional custom domain support via AWS Certificate Manager (ACM).
 2. CloudFront forwards requests to an internal Application Load Balancer (ALB) via a **VPC origin**. The ALB is not internet-facing — CloudFront creates ENIs in the VPC for private connectivity. WebSocket upgrades pass through the VPC origin end to end.
-3. The ALB routes traffic to Amazon ECS Fargate tasks running the **unmodified official Open WebUI image**, pulled by digest from `ghcr.io/open-webui/open-webui` at deploy time. No image is built.
+3. The ALB routes traffic to Amazon ECS Fargate tasks running the **unmodified official Open WebUI image**, pulled from `ghcr.io/open-webui/open-webui`. The deploy resolves the selected version to an immutable digest, so every task runs identical bytes. No image is built.
 4. For Bedrock model traffic, the ECS task calls the **AgentCore inference gateway** rather than Bedrock directly. Each request carries the logged-in user's own Cognito OAuth token. The gateway validates that JWT (inbound, `CUSTOM_JWT`) and signs to the `bedrock-mantle` OpenAI-compatible endpoint with the gateway execution role (outbound, SigV4). A REQUEST interceptor Lambda returns a capability-filtered model list so only working models appear. See [`GATEWAY_INTEGRATION_GUIDE.md`](GATEWAY_INTEGRATION_GUIDE.md) for the full design.
 5. Amazon Cognito provides SSO authentication. Users authenticate via the Cognito Managed Login UI, and the callback auto-provisions users with role mapping based on Cognito group membership. The same Cognito user pool is the trust anchor for the gateway's JWT authorizer.
 6. Aurora PostgreSQL Serverless v2 (with pgvector) stores application data (users, chats, configurations, migrations). ElastiCache Redis provides session caching and shared Socket.IO state with TLS encryption. Amazon S3 stores uploaded files.
@@ -142,6 +142,8 @@ Which model ids fall in each lane is data, not code — [`config/model-capabilit
 | `OpenWebUI-Gateway` | AgentCore inference gateway, REQUEST interceptor Lambda, `bedrock-mantle` inference target (custom resource) |
 | `OpenWebUI-Compute` | ECS Fargate service (unmodified official image), internal ALB, CloudFront distribution |
 
+A sixth, opt-in stack — `OpenWebUI-Metering` — is added by `./deploy.sh --metering` (see [`METERING.md`](METERING.md)); everything in this guide applies unchanged with it enabled.
+
 ---
 
 ## Plan Your Deployment
@@ -174,18 +176,20 @@ Infrastructure (VPC/ALB/ECS/Aurora/Redis/CloudFront/gateway/Lambdas) is a small 
 
 - **WebSocket is required end-to-end.** CloudFront supports WebSocket over VPC origins, and the stack pins `ENABLE_WEBSOCKET_SUPPORT=true` (Socket.IO runs websocket-only, with Redis-shared state across tasks). If you front the ALB with something other than this stack's CloudFront distribution, it must pass WebSocket upgrades through.
 - **DNS is managed externally.** The CDK stacks do not create Route 53 records. If using a custom domain, you must create a CNAME record pointing to the CloudFront distribution domain after deployment.
-- **New Bedrock models require a probe + redeploy.** Models don't appear in the dropdown until they're in `config/model-capabilities.json`. Re-run [`scripts/probe-model-capabilities.py`](../scripts/probe-model-capabilities.py) and redeploy the Gateway stack to refresh the interceptor (see the gateway guide).
+- **New Bedrock models require a probe + redeploy.** Models don't appear in the dropdown until they're in `config/model-capabilities.json`. Re-run [`scripts/probe-model-capabilities.py`](../scripts/probe-model-capabilities.py) and redeploy the Gateway stack to refresh the interceptor (see the gateway guide) — or enable the opt-in scheduled refresher (`ENABLE_MODEL_REFRESH=true`, see the [gateway guide](GATEWAY_INTEGRATION_GUIDE.md#operational-notes)) to automate it.
 - **Single-region deployment.** The CDK stacks deploy to a single AWS region.
 
 ### Supported AWS Regions
 
 This solution can be deployed in any AWS region that supports all required services (notably Amazon Bedrock `bedrock-mantle` and CloudFront VPC origins). It has been tested in:
 
-| Region Name | Region Code |
-|---|---|
-| US East (N. Virginia) | us-east-1 |
-| US East (Ohio) | us-east-2 |
-| US West (Oregon) | us-west-2 |
+| Region Name | Region Code | Notes |
+|---|---|---|
+| US East (N. Virginia) | us-east-1 | Full three-lane experience (recommended) |
+| US East (Ohio) | us-east-2 | No Anthropic Claude on `bedrock-mantle` as of 2026-07 — the Messages lane is empty |
+| US West (Oregon) | us-west-2 | Partial Claude availability as of 2026-07 |
+
+Model availability on `bedrock-mantle` is region-dependent; regenerate [`config/model-capabilities.json`](../config/model-capabilities.json) for your region (see [Adding or Refreshing Models](#adding-or-refreshing-models)).
 
 ---
 
@@ -234,8 +238,8 @@ This repository is sample code. The defaults above are security-conscious, but t
 Before deploying outside a test environment, at minimum:
 
 - **Run your own security review and threat model** of the deployed architecture — the IAM policies, network boundaries, Cognito configuration, gateway authorization, and the admin console's access control — against your organization's requirements.
-- **Review the third-party application.** Open WebUI is not developed, maintained, or supported by AWS. Evaluate its security posture and release cadence yourself, and own the version pin (see [`UPGRADE_RUNBOOK.md`](UPGRADE_RUNBOOK.md)). Vulnerabilities in the upstream image are yours to track and patch.
-- **Replace the demo-grade defaults.** Several resources use `RemovalPolicy.DESTROY` with `autoDeleteObjects` so the sample tears down cleanly; production data stores should use `RETAIN`, plus backups and a tested restore path. Review Aurora backup retention, log retention, and any lifecycle rules.
+- **Review the third-party application.** Open WebUI is not developed, maintained, or supported by AWS. Evaluate its security posture and release cadence yourself, and own the version you run — pin `OPEN_WEBUI_IMAGE` to a release you have validated rather than relying on the latest-release default (see [`UPGRADE_RUNBOOK.md`](UPGRADE_RUNBOOK.md)). Vulnerabilities in the upstream image are yours to track and patch.
+- **Review data lifecycle defaults.** The data stores (Aurora, the S3 upload bucket, the Cognito user pool) are set to `RETAIN` with Aurora deletion protection on, so a `cdk destroy` does not take data with it — but retention is not a backup strategy. Establish backups and a tested restore path, and review Aurora backup retention, log retention, and any lifecycle rules.
 - **Test at your expected scale,** including failure modes (Bedrock throttling, Aurora failover, Redis eviction, gateway or interceptor errors) and cost. See [`COST_ANALYSIS_20K_USERS.md`](COST_ANALYSIS_20K_USERS.md).
 - **Configure model safeguards.** Generative AI models can return inaccurate or unexpected output. Evaluate [Amazon Bedrock Guardrails](https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html) and AgentCore Policy for your use case, and decide your own data-retention and prompt-logging posture.
 - **Establish operational ownership** — patching, monitoring and alerting thresholds, incident response, and a documented on-call runbook. The alarms this sample creates are a starting set, not a complete operational baseline.
@@ -254,8 +258,8 @@ There is **one deployment path**: the standalone `./deploy.sh` script. It deploy
 `deploy.sh` automates the entire process:
 
 1. Validates prerequisites (AWS CLI, Node.js, npm, CDK). **No Docker.**
-2. Deploys the five CDK stacks in order (Network → Data → Auth → Gateway → Compute) with `cdk deploy --all`. ECS pulls the unmodified official Open WebUI image by digest — nothing is built.
-3. Populates infrastructure outputs into `.env` (Cognito IDs, OIDC config, S3 bucket, gateway URL, etc.).
+2. Resolves the Open WebUI version (`OPEN_WEBUI_IMAGE` in `.env`, or the latest official release when unset) to an immutable image digest, then deploys the five CDK stacks in order (Network → Data → Auth → Gateway → Compute) with `cdk deploy --all`. ECS pulls the unmodified official Open WebUI image by that digest — nothing is built.
+3. Populates infrastructure outputs into `.env` (Cognito IDs, OIDC config, S3 bucket, etc.). The gateway URL is injected into the ECS task directly by CDK.
 4. Syncs the Cognito client secret to Secrets Manager.
 5. Updates the Cognito callback URL to match the deployed CloudFront domain.
 6. Forces an ECS service deployment so the task picks up the resolved configuration. At container start, [`pipe/seed.py`](../pipe/seed.py) installs the Claude pipe + two OpenAI connections into the app database.
@@ -279,6 +283,17 @@ Review `.env`. **No Bedrock variables are needed** — the gateway handles Bedro
 # WebSocket stays enabled — CloudFront passes it through the VPC origin
 ENABLE_WEBSOCKET_SUPPORT=true
 ```
+
+**Open WebUI version (optional).** Leave `OPEN_WEBUI_IMAGE` unset to deploy the latest official Open WebUI release — `deploy.sh` resolves it to an immutable image digest at deploy time. To pin a specific version instead:
+
+```bash
+# a release tag (resolved to its digest at deploy time), or
+OPEN_WEBUI_IMAGE=ghcr.io/open-webui/open-webui:v0.11.0
+# a full digest (used verbatim; works without registry access at deploy time)
+OPEN_WEBUI_IMAGE=ghcr.io/open-webui/open-webui@sha256:…
+```
+
+See [`UPGRADE_RUNBOOK.md`](UPGRADE_RUNBOOK.md) for upgrades and rollback.
 
 ### Step 3: (Optional) Configure Custom Domain
 
@@ -367,7 +382,7 @@ Because Cognito groups drive Open WebUI groups, you manage membership in Cognito
 
 Per-response token usage is surfaced by Open WebUI's native usage display where the provider returns usage fields (hover the info icon on an assistant message).
 
-**Application-level token metering and quota enforcement are not included in this sample.** For cost control, use AWS-native mechanisms:
+**Application-level token metering and quota enforcement are not deployed by default** — they are available as the opt-in metering module (`./deploy.sh --metering`): per-user token/dollar metering, operator-set quotas enforced at the gateway, and an admin console. See [`METERING.md`](METERING.md). Without the module, use AWS-native mechanisms:
 
 - [Amazon Bedrock service quotas](https://docs.aws.amazon.com/bedrock/latest/userguide/quotas.html) — hard request/token-rate ceilings per model.
 - [CloudWatch Bedrock metrics](https://docs.aws.amazon.com/bedrock/latest/userguide/monitoring.html) — invocation counts and token usage for dashboards/alarms.
@@ -445,14 +460,14 @@ The ECS service is configured with auto-scaling based on CPU and memory utilizat
 ## Updating the Solution
 
 ```bash
-# Full deploy (all five stacks; picks up a new image pin, gateway/capability changes, infra)
+# Full deploy (all five stacks; picks up an Open WebUI version change, gateway/capability changes, infra)
 ./deploy.sh --profile YOUR_PROFILE
 
 # Config-only update (push .env changes to ECS env vars and restart, no CDK)
 ./deploy.sh --env-only --profile YOUR_PROFILE
 ```
 
-- **Moving the Open WebUI version pin** (the image digest) is covered in [`UPGRADE_RUNBOOK.md`](UPGRADE_RUNBOOK.md), then `./deploy.sh`.
+- **Changing the Open WebUI version** (upgrading to a newer release, or pinning via `OPEN_WEBUI_IMAGE`) is covered in [`UPGRADE_RUNBOOK.md`](UPGRADE_RUNBOOK.md), then `./deploy.sh`.
 - **Refreshing the model catalog** — re-run the capability probe and redeploy the Gateway stack (see [Adding or Refreshing Models](#adding-or-refreshing-models)).
 
 ---
@@ -464,13 +479,16 @@ To remove all deployed resources:
 ```bash
 cd infra
 npx cdk destroy --all --profile YOUR_PROFILE
+# metering deployments must include the flag so the Metering stack is in scope:
+npx cdk destroy --all -c metering=on --profile YOUR_PROFILE
 ```
 
-**Retained resources** (delete manually if desired):
+**Retained resources** (removed manually if desired):
 
-- **S3 bucket** — Must be emptied before deletion.
-- **Aurora snapshots** — A final snapshot is created on deletion by default.
-- **CloudWatch log groups** — Retained for troubleshooting.
+- **Aurora cluster** — Deletion protection is on and the removal policy is `RETAIN`: `cdk destroy` leaves the cluster **running (and billing)**. To remove it, disable deletion protection, then delete the cluster in the RDS console, taking a final snapshot if you want the data.
+- **Cognito user pool** — Retained (`RETAIN`) with its users; delete in the Cognito console.
+- **S3 upload bucket** — Must be emptied before deletion.
+- **CloudWatch log groups** — Lambda log groups persist; the ECS application log group is deleted with the stack.
 
 ---
 
@@ -549,7 +567,7 @@ npx cdk destroy --all --profile YOUR_PROFILE
 ## Related Resources
 
 - [Gateway Integration Guide](GATEWAY_INTEGRATION_GUIDE.md) — Technical deep-dive into the AgentCore inference gateway, interceptor, capability matrix, and the Claude pipe.
-- [Upgrade Runbook](UPGRADE_RUNBOOK.md) — How to move the Open WebUI version pin.
+- [Upgrade Runbook](UPGRADE_RUNBOOK.md) — How Open WebUI version selection, upgrades, and rollback work.
 - [Cost Analysis (20K users)](COST_ANALYSIS_20K_USERS.md) — Detailed cost model at scale.
 - [Open WebUI Documentation](https://docs.openwebui.com/)
 - [Amazon Bedrock User Guide](https://docs.aws.amazon.com/bedrock/latest/userguide/)
