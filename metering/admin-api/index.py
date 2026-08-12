@@ -120,7 +120,7 @@ def _is_admin(claims: dict) -> bool:
 
 def _audit(actor: str, action: str, target: str, before: dict, after: dict):
     now = int(time.time())
-    day = datetime.datetime.utcfromtimestamp(now).strftime("%Y-%m-%d")
+    day = datetime.datetime.fromtimestamp(now, datetime.timezone.utc).strftime("%Y-%m-%d")
     ddb.put_item(
         TableName=TABLE,
         Item={

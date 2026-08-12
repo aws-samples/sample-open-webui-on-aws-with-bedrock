@@ -119,11 +119,14 @@ boundary as a database event:
 - **Snapshot Aurora first, every time.** Not optional:
 
   ```bash
+  # RDS identifiers allow only letters, digits, and single hyphens — write the
+  # version with hyphens (v0-11-0), not dots.
+  SNAP="pre-owui-v0-11-0-$(date +%Y%m%d)"
   aws rds create-db-cluster-snapshot \
     --db-cluster-identifier <cluster-id> \
-    --db-cluster-snapshot-identifier pre-owui-<target-version>-$(date +%Y%m%d)
+    --db-cluster-snapshot-identifier "$SNAP"
   aws rds wait db-cluster-snapshot-available \
-    --db-cluster-snapshot-identifier pre-owui-<target-version>-$(date +%Y%m%d)
+    --db-cluster-snapshot-identifier "$SNAP"
   ```
 
   Wait for `available` **before** the new image starts. A migration that goes
@@ -170,6 +173,14 @@ not only at upgrade time.
 ./deploy.sh          # or your own CI running: cd infra && npx cdk deploy --all
 ```
 
+**Match the flags your deployment runs with.** Opt-in modules must be re-stated
+on every deploy: a metering-enabled deployment upgrades with
+`./deploy.sh --metering`, and a deployment using the scheduled model refresher
+needs `ENABLE_MODEL_REFRESH=true` (in `.env` or the environment). Omitting a
+flag doesn't delete the module's stack, but it silently de-wires it from the
+new task definition (metering env vars and the seeded filter drop out of the
+container), so usage capture stops without any error.
+
 The deploy log prints the exact image it resolved — record it next to the
 rollback target from step 1:
 
@@ -193,6 +204,13 @@ task definition automatically. Then verify manually:
       the model-list endpoint is **not** sufficient; only an actual streamed
       response proves the connection/pipe contract still holds against the new
       release.
+
+The browser UI is the easiest way to run the checklist. If you script it
+instead, note that the two native lanes authenticate with `system_oauth`: the
+app resolves the user's OAuth token from the `oauth_session_id` **cookie**, so
+API calls made with only the `Authorization: Bearer` header will show an empty
+model list for those lanes. Send the browser session cookies along with the
+token (the Claude pipe lane has the same requirement at chat time).
 
 ## 6. Roll back if anything fails
 
