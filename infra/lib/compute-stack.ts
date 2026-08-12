@@ -4,7 +4,6 @@ import * as cdk from 'aws-cdk-lib';
 import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
-import { DockerImageAsset, Platform } from 'aws-cdk-lib/aws-ecr-assets';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as logs from 'aws-cdk-lib/aws-logs';
@@ -322,7 +321,7 @@ export class ComputeStack extends cdk.Stack {
         // Chroma (DATA_DIR has no durable volume, so it is wiped on every task
         // restart). PGVECTOR_DB_URL defaults to DATABASE_URL;
         // PGVECTOR_CREATE_EXTENSION defaults true and the app connects as the
-        // master user, so first boot creates the extension.
+        // admin user, so first boot creates the extension.
         VECTOR_DB: 'pgvector',
       },
       secrets: {

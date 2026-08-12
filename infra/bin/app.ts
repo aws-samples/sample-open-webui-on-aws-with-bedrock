@@ -20,7 +20,7 @@ const env = {
   region: process.env.CDK_DEFAULT_REGION || 'us-east-1',
 };
 
-// Load persistent deployment config (written by deploy-aws.sh)
+// Load persistent deployment config (written by deploy.sh)
 // CLI context overrides file values, file values override defaults
 const configPath = path.join(__dirname, '..', 'deploy.config.json');
 let fileConfig: Record<string, string> = {};

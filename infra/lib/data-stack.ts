@@ -69,7 +69,7 @@ export class DataStack extends cdk.Stack {
       storageEncrypted: true,
       deletionProtection: props.auroraDeletionProtection ?? true,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
-      // The generated master password must be URL-safe: the compute stack
+      // The generated admin password must be URL-safe: the compute stack
       // composes DATABASE_URL from these credentials as a plain connection
       // string, so exclude every character that would need URL-encoding.
       credentials: rds.Credentials.fromGeneratedSecret('postgres', {
