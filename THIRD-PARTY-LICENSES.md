@@ -4,11 +4,11 @@
 
 This sample deploys [Open WebUI](https://github.com/open-webui/open-webui),
 copyright (c) 2023- Open WebUI Inc. [Created by Timothy Jaeryang Baek].
-Open WebUI is obtained at build/deploy time from its official distribution
+Open WebUI is obtained at deploy time from its official distribution
 channels and is not redistributed in this repository. Its license lineage is
 MIT → BSD-3-Clause → the current "Open WebUI License" (per upstream's
-`LICENSE_NOTICE`). The full license text, as published at the pinned release,
-follows verbatim (note: its "Contributor License Agreement" sentence governs
+`LICENSE_NOTICE`). The full license text, as published upstream at the time
+of this writing, follows verbatim (note: its "Contributor License Agreement" sentence governs
 contributions to the upstream Open WebUI project, not to this repository —
 this sample has no CLA; see CONTRIBUTING.md):
 
@@ -63,7 +63,8 @@ DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
 SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
 CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.```
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
 
 ## Dependency trees
 
@@ -79,7 +80,9 @@ upstream's own manifests.
 | constructs | Apache-2.0 | npmjs.org |
 | aws-cdk (CLI) | Apache-2.0 | npmjs.org |
 | typescript | Apache-2.0 | npmjs.org |
+| ts-node | MIT | npmjs.org |
 | @types/node | MIT | npmjs.org |
+| jest, ts-jest, @types/jest (tests) | MIT | npmjs.org |
 
 ## Metering admin console dependencies (console/ — only built when `--metering`)
 
@@ -97,8 +100,11 @@ assets at deploy time and served from S3/CloudFront; none run server-side.
 | react-oidc-context | MIT | npmjs.org |
 | vite, @vitejs/plugin-react | MIT | npmjs.org |
 
-The sample adds no Python dependencies: the Bedrock provider uses the boto3
-version already shipped in the official Open WebUI image.
+The sample adds no Python dependencies to the container: the Claude pipe and
+seeder use the boto3 version already shipped in the official Open WebUI image.
+(At deploy time, `deploy.sh` vendors boto3/botocore — and requests, for the
+opt-in refresher — into the gateway Lambda assets per their `requirements.txt`
+files; Apache-2.0, not redistributed in this repository.)
 
 ## Metering pricing data (opt-in module, runtime fetch)
 

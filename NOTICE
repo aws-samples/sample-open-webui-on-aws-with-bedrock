@@ -12,8 +12,8 @@ distributed under the "Open WebUI License", a BSD-3-Clause-derived license
 that additionally restricts altering or removing "Open WebUI" branding in
 most deployments (see THIRD-PARTY-LICENSES.md for the full text). This
 sample obtains Open WebUI at deploy time from its official distribution
-channel (the ghcr.io/open-webui/open-webui container image, pinned by
-digest), deploys it with UNMODIFIED branding and code, and does not
+channel (the ghcr.io/open-webui/open-webui container image), deploys it
+with UNMODIFIED branding and code, and does not
 redistribute or relicense it. This sample makes no modifications to the
 Open WebUI image or source: the Amazon Bedrock integration is delivered as
 separate AWS infrastructure and runtime configuration (an AgentCore
