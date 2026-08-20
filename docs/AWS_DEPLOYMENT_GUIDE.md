@@ -121,7 +121,7 @@ Which model ids fall in each lane is data, not code — [`config/model-capabilit
 | Amazon Cognito | Core | SSO authentication with group-based RBAC, and the trust anchor for the gateway JWT authorizer |
 | Amazon VPC | Core | Isolated network with private subnets, NAT gateway, and VPC endpoints |
 | Application Load Balancer | Supporting | Internal load balancing (private, accessed only via CloudFront VPC origin) |
-| Aurora PostgreSQL Serverless v2 | Supporting | Auto-scaling database with pgvector for application data |
+| Aurora PostgreSQL Serverless v2 (17.7 LTS) | Supporting | Auto-scaling database with pgvector for application data |
 | Amazon ElastiCache (Redis) | Supporting | Session cache and Socket.IO state sharing with TLS encryption |
 | Amazon S3 | Supporting | File upload storage |
 | AWS Lambda | Supporting | Gateway REQUEST interceptor + inference-target provisioner (custom resource) |

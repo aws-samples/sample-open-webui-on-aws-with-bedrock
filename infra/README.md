@@ -7,7 +7,7 @@ AWS CDK (TypeScript) infrastructure for deploying Open WebUI on Amazon ECS with 
 | Stack | Resources | Description |
 |---|---|---|
 | `OpenWebUI-Network` | VPC, subnets, NAT, VPC endpoints, security groups | Isolated network with private subnets and endpoints for S3, CloudWatch, Secrets Manager |
-| `OpenWebUI-Data` | Aurora PostgreSQL Serverless v2, ElastiCache Redis, S3 | Auto-scaling database (0.5–8 ACU), Redis with TLS (CfnReplicationGroup), file storage |
+| `OpenWebUI-Data` | Aurora PostgreSQL Serverless v2 (17.7 LTS), ElastiCache Redis, S3 | Auto-scaling database (0.5–8 ACU), Redis with TLS (CfnReplicationGroup), file storage |
 | `OpenWebUI-Auth` | Cognito User Pool, client, domain, groups | SSO authentication with admin/user/power-users/basic-users groups |
 | `OpenWebUI-Gateway` | AgentCore inference gateway, models-filter interceptor Lambda, inference-target custom resource, gateway execution role | Per-user (Cognito JWT) inference endpoint fronting `bedrock-mantle`; see [`GATEWAY_INTEGRATION_GUIDE.md`](../docs/GATEWAY_INTEGRATION_GUIDE.md) |
 | `OpenWebUI-Compute` | ECS Fargate, internal ALB, CloudFront VPC origin, Secrets Manager | Container compute (1–10 tasks) running the unmodified official image, HTTPS via CloudFront, credential management |
@@ -75,6 +75,7 @@ or add to `cdk.context.json`. `deploy.sh` vendors the refresher's Python deps
 - **Redis via CfnReplicationGroup** — Required for TLS support (CfnCacheCluster doesn't support TLS).
 - **DATABASE_URL composed by an ECS command override** — the official image's `start.sh` ships unpatched; the task command exports `DATABASE_URL` from component env vars (host/port/name/user + password injected from Secrets Manager) before exec'ing it.
 - **Vectors in Aurora pgvector** — `VECTOR_DB=pgvector` so retrieval data survives task restarts (the default on-container Chroma store is ephemeral).
+- **Aurora engine pinned to an LTS minor** — `AuroraPostgresEngineVersion.VER_17_7`. LTS minors carry a multi-year standard-support window (17.7: through 2030-02-28), so a cloned sample is not force-upgraded off an unsupported minor. When bumping, pick the current LTS minor from the [Aurora PostgreSQL release calendar](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraPostgreSQLReleaseNotes/aurorapostgresql-release-calendar.html) rather than the highest available number.
 
 ## Validation
 

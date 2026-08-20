@@ -46,8 +46,16 @@ export class DataStack extends cdk.Stack {
     );
 
     this.auroraCluster = new rds.DatabaseCluster(this, 'AuroraCluster', {
+      // Pinned to an Aurora PostgreSQL **LTS** minor version on purpose. LTS
+      // minors get a multi-year standard-support window (17.7: through
+      // 2030-02-28), so a cloned sample will not be force-upgraded off an
+      // unsupported minor mid-demo. Non-LTS minors age out in ~12-18 months —
+      // this pin was previously 16.4, which had already passed end of standard
+      // support. When bumping, prefer the current LTS minor and re-check the
+      // release calendar rather than picking the newest available number:
+      // https://docs.aws.amazon.com/AmazonRDS/latest/AuroraPostgreSQLReleaseNotes/aurorapostgresql-release-calendar.html
       engine: rds.DatabaseClusterEngine.auroraPostgres({
-        version: rds.AuroraPostgresEngineVersion.VER_16_4,
+        version: rds.AuroraPostgresEngineVersion.VER_17_7,
       }),
       vpc,
       vpcSubnets: {
