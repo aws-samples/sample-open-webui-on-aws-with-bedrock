@@ -277,12 +277,24 @@ for cmd in aws node npm python3; do
   log "$cmd found: $(command -v "$cmd")"
 done
 
-if command -v cdk &>/dev/null; then
-  CDK="cdk"
-  log "cdk found: $(command -v cdk) ($(cdk --version 2>&1 | head -1))"
+# Prefer the CDK CLI pinned in infra/devDependencies over any global install.
+# aws-cdk-lib emits a cloud-assembly schema version that only a recent-enough
+# CLI can read, so a stale global `cdk` aborts the deploy with a schema-version
+# mismatch ("Maximum schema version supported is …"). Both CDK call sites below
+# cd into $INFRA_DIR and run `npm install` first, so the pinned CLI is present
+# by the time it is actually invoked.
+CDK="npx cdk"
+PINNED_CDK_VERSION="$( (cd "$INFRA_DIR" && npx --no-install cdk --version) 2>/dev/null || true )"
+if [[ -n "$PINNED_CDK_VERSION" ]]; then
+  log "cdk (repo-pinned): $PINNED_CDK_VERSION"
 else
-  warn "AWS CDK CLI not found globally, will use npx"
-  CDK="npx cdk"
+  info "Repo-pinned CDK CLI not installed yet; it installs with the infra deps."
+fi
+if command -v cdk &>/dev/null; then
+  GLOBAL_CDK_VERSION="$(cdk --version 2>&1 | head -1 || true)"
+  if [[ -n "$PINNED_CDK_VERSION" && "$GLOBAL_CDK_VERSION" != "$PINNED_CDK_VERSION" ]]; then
+    info "Ignoring global cdk ($GLOBAL_CDK_VERSION) in favor of the repo pin."
+  fi
 fi
 
 # ── Interactive configuration (skip if --env-only) ──────────
