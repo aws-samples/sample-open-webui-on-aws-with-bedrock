@@ -53,6 +53,12 @@ export class GatewayStack extends cdk.Stack {
   public readonly gatewayInferenceUrl: string;
   /** Set only when the metering module is on (interceptor v2 behind an alias). */
   public meteringInterceptorAlias?: lambda.Alias;
+  /**
+   * The metering interceptor Lambda (unqualified), only when metering is on.
+   * The metering stack's pricing refresher reads its MODEL_CAPS env var
+   * (GetFunctionConfiguration) for the gateway↔pricing coverage join.
+   */
+  public meteringInterceptorFn?: lambda.Function;
   /** Canary app client (USER_PASSWORD_AUTH), only when metering is on. */
   public canaryClient?: cognito.UserPoolClient;
 
@@ -202,6 +208,7 @@ export class GatewayStack extends cdk.Stack {
       });
       interceptorInvokeArn = alias.functionArn;
       this.meteringInterceptorAlias = alias;
+      this.meteringInterceptorFn = interceptor;
     } else {
       interceptor = new lambda.Function(this, 'ModelsFilter', {
         runtime: lambda.Runtime.PYTHON_3_12,

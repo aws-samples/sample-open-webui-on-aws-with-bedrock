@@ -57,6 +57,15 @@ for _p in (_HERE, os.path.join(_HERE, "..", "..", "metering")):  # task root / r
 from pricing.identity import parse_model_ref  # noqa: E402
 from pricing.resolver import resolve_rate, unwrap_item  # noqa: E402
 
+# D10/§6: one shared cache TTL for the pricing catalog, owned by the pricing
+# package and imported by BOTH the estimate path (here) and the settle path.
+# Imported with a fallback so this module still loads against a pricing package
+# that predates the shared constant (env var still overrides for tests).
+try:
+    from pricing import PRICING_CACHE_TTL_S as _SHARED_PRICING_TTL  # noqa: E402
+except ImportError:  # pragma: no cover — pre-D10 pricing package
+    _SHARED_PRICING_TTL = 300
+
 
 def _bundled(name: str) -> dict:
     try:
@@ -88,8 +97,9 @@ GROUP_ORDER = [g for g in json.loads(os.environ.get("GROUP_ORDER", "[]")) if g !
 # conservative admission input estimate: bytes/4 (see track-d; no tokenizer in-path)
 EST_INPUT_DIVISOR = 4
 # admission estimates read the pricing catalog with a short per-container TTL
-# (rates move at refresh cadence; estimates only need to be roughly current)
-PRICING_CACHE_TTL = int(os.environ.get("PRICING_CACHE_TTL", "60"))
+# (rates move at refresh cadence; estimates only need to be roughly current).
+# The default is the shared pricing-package TTL (D10); env var overrides it.
+PRICING_CACHE_TTL = int(os.environ.get("PRICING_CACHE_TTL", str(_SHARED_PRICING_TTL)))
 
 INFERENCE_SUFFIXES = ("/chat/completions", "/responses", "/messages")
 
@@ -298,6 +308,10 @@ def _est_rates(model_raw: str) -> tuple[str, float, float]:
     entry = _catalog_entry(ref.key)
     rin = resolve_rate(entry, "input", routing=ref.routing).per_token() or 0.0
     rout = resolve_rate(entry, "output", routing=ref.routing).per_token() or 0.0
+    # §3: an admission estimate that resolves NO rate is visible (metric only —
+    # unpriced admission is still allowed, availability-first posture unchanged).
+    if rin == 0.0 and rout == 0.0:
+        _metric("UnpricedAdmission")
     return ref.key, rin, rout
 
 

@@ -138,6 +138,13 @@ def _run(mod, fake, fail_services=(), cp=CP_MODELS):
     mod.ddb = fake
     mod._metric = lambda *a, **k: None
     mod._list_cp_models = lambda: cp
+    # D1/D2: handler now runs the coverage join. Keep existing tests offline by
+    # stubbing the two network seams (mantle catalog SigV4 GET + served
+    # MODEL_CAPS read); coverage correctness is covered in test_coverage_*.
+    if not hasattr(mod, "_orig_mantle_catalog"):
+        mod._orig_mantle_catalog = mod._mantle_catalog
+    mod._mantle_catalog = lambda: []
+    mod._served_caps = lambda: {}
 
     def fetch(svc):
         if svc in fail_services:
@@ -259,7 +266,8 @@ def test_rerun_is_idempotent_apart_from_generation_and_timestamps():
 
     def strip(item):
         return {k: v for k, v in item.items()
-                if k not in ("refresh_generation", "updated_at", "refreshed_at", "duration_ms")}
+                if k not in ("refresh_generation", "updated_at", "refreshed_at",
+                             "duration_ms", "computed_at")}
 
     assert set(fake.items) == set(first)
     for key, item in fake.items.items():
