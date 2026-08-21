@@ -29,6 +29,8 @@ config/
   model-capabilities.json           Generated API/model compatibility matrix
 scripts/
   probe-model-capabilities.py       Regenerates model capability data
+  diagnose-model-pricing.py         Runs the production pricing pipeline per model (why (un)priced)
+  pricing-rate-diff.py              Pre-deploy effective-rate diff between two pricing snapshots
 docs/                               Deployment, integration, metering, cost, and upgrade guides
 deploy.sh                           End-to-end deployment/update entry point
 .env.example                        Safe application configuration template
@@ -39,6 +41,7 @@ deploy.sh                           End-to-end deployment/update entry point
 - `infra/bin/app.ts` wires Network → Data/Auth → Gateway → optional Metering → Compute; keep orchestration there and resource definitions in the matching `infra/lib/` stack.
 - Put gateway request transformation/filtering in `gateway/interceptor/`, admission and reservation in `gateway/metering-interceptor/`, and inference-target lifecycle logic in `gateway/provisioner/` and `gateway/refresher/`.
 - Put settlement, pricing, recovery, reconciliation, canaries, and administrative APIs in `metering/` rather than Open WebUI integration code.
+- The gateway→pricing join lives in the pricing refresher: it reads served `MODEL_CAPS` + the live gateway catalog and writes a `PRICING#_COVERAGE` item (alarmed via `UnpricedGatewayModels`), keeping metering optional and DynamoDB the single pricing store.
 - Put Open WebUI runtime integration, usage capture, and startup seeding in `pipe/`; avoid modifying upstream Open WebUI code.
 - Keep model/API compatibility as data in `config/`, with discovery and regeneration logic in `scripts/`.
 - Keep operational guidance and runbooks in `docs/`; update them when deployment, metering, or upgrade behavior changes.
