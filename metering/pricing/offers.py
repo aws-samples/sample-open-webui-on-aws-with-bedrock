@@ -224,6 +224,14 @@ def _direction_from(tokens: list[str]) -> tuple[str | None, list[str]]:
                    if t in ("cache", "input", "output")), None)
     if anchor is None:
         return None, tokens
+    # Leading tokens are USUALLY the model-name prefix (claude3-haiku-input-…)
+    # and are discarded — but the camel MP family puts REAL qualifiers there
+    # (MillionBatchOutputTokens: batch is the tier). Discarding those silently
+    # reclassified batch rates onto the standard leaf (the residual
+    # rate_conflicts found live 2026-08-21). Keep any leading token the
+    # qualifier vocabulary or noise list knows; discard only true name
+    # fragments.
+    lead_quals = [t for t in tokens[:anchor] if t in _QUALIFIERS or t in _NOISE]
     tok = tokens[anchor]
     tail = tokens[anchor:]
     # cache read/write [duration]
@@ -243,9 +251,9 @@ def _direction_from(tokens: list[str]) -> tuple[str | None, list[str]]:
         direction = f"cache_{kind}"
         if kind == "write" and duration:
             direction += f"_{duration}"
-        return direction, rest
+        return direction, lead_quals + rest
     if tok in ("input", "output"):
-        return tok, tail[1:]
+        return tok, lead_quals + tail[1:]
     return None, tokens
 
 

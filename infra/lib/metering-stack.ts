@@ -610,6 +610,10 @@ export class MeteringStack extends cdk.Stack {
       ['/alert-subscriptions', [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.POST, apigwv2.HttpMethod.DELETE]],
       ['/config', [apigwv2.HttpMethod.GET]],
       ['/pricing', [apigwv2.HttpMethod.GET]],
+      // the dedicated coverage read (contract §5). Missing in the first deploy:
+      // the handler had the route but API Gateway did not — both live
+      // validation rounds saw API-GW's own {"message":"Not Found"}.
+      ['/pricing/coverage', [apigwv2.HttpMethod.GET]],
       ['/pricing/{model}', [apigwv2.HttpMethod.PUT, apigwv2.HttpMethod.DELETE]],
       ['/pricing/refresh', [apigwv2.HttpMethod.POST]],
       ['/pricing/alias', [apigwv2.HttpMethod.POST]],

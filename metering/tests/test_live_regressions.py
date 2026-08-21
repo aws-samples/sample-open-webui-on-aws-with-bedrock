@@ -80,6 +80,20 @@ def test_nova_sonic_fixture_prices_text_rates():
 
 # ── 2. unclassified scope = token-unit SKUs only ─────────────────────────────
 
+
+def test_leading_qualifiers_are_consumed_not_discarded():
+    """The camel MP family spells qualifiers BEFORE the direction anchor
+    (MillionBatchOutputTokens). Discarding all leading tokens as name
+    fragments silently reclassified batch rates onto the standard leaf —
+    the residual rate_conflicts the round-2 live validation found."""
+    v = classify_usagetype("USE1-MP:USE1_MillionBatchOutputTokens-Units", "svc")
+    assert v.kind == GRID and (v.classified.direction, v.classified.tier) == ("output", "batch")
+    v = classify_usagetype("USE1-MP:USE1_MillionBatchInputTokens-Units", "svc")
+    assert v.kind == GRID and (v.classified.direction, v.classified.tier) == ("input", "batch")
+    # true name fragments before the anchor are still discarded
+    v = classify_usagetype("USE1-Claude3Haiku-input-tokens", "svc")
+    assert v.kind == GRID and (v.classified.direction, v.classified.tier) == ("input", "standard")
+
 def test_non_token_unknown_shapes_stay_out_of_the_unclassified_bucket():
     offer = {
         "version": "t", "products": {
