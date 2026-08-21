@@ -633,17 +633,28 @@ def _priced(resolved: dict, keys_by_canonical: dict, model_key: str,
 
 
 def _build_coverage(resolved: dict, keys_by_canonical: dict, caps: dict,
-                    catalog_ids: set, catalog_error: str | None) -> dict:
+                    catalog_ids: set, catalog_error: str | None,
+                    cp_models: list | None = None) -> dict:
     """Coverage item (contract §2): per-model listed/available/priced + counts.
 
     Universe = union(served MODEL_CAPS models, catalog-available models). The
     resolver prices each via its exact catalog key (parse_model_ref strips any
     routing scope). reason: ok | no-pricing-row | null-rates | stale-caps.
+
+    control_plane (third evidence plane, 2026-08-21): whether the id resolves
+    in bedrock ListFoundationModels via the same EXACT alias expansion the
+    pricing join uses. The serving plane can keep executing a model AWS has
+    publicly retired (live case: zai.glm-4.6 — delisted from docs, pricing
+    site, and the control plane, yet /v1/models says available and a real
+    invoke returns 200). cp-absence alone is NOT a retirement verdict — some
+    current mantle models (gpt-5.4/5.5) are also cp-absent — so this is a
+    recorded signal for the operator, never an auto-action.
     """
     lanes_by_model = _lanes_by_model(caps)
     listed_ids = set(lanes_by_model)
     universe = sorted(listed_ids | catalog_ids)
     overrides = _override_rows({identity.parse_model_ref(m).key for m in universe})
+    cp_index = identity.build_index(mid for mid, _, _ in (cp_models or []))
 
     models = []
     counts = {"invokable": 0, "invokable_priced": 0, "invokable_unpriced": 0,
@@ -652,6 +663,9 @@ def _build_coverage(resolved: dict, keys_by_canonical: dict, caps: dict,
         key = identity.parse_model_ref(mid).key
         listed = mid in listed_ids
         available = mid in catalog_ids
+        # tri-state: True/False only when a cp list was available this run;
+        # None = unknown (cp fetch absent) — unknown must never read as retired
+        in_cp = (bool(cp_index.get(key)) if cp_models else None)
         priced, source = _priced(resolved, keys_by_canonical, key,
                                  override_row=overrides.get(key))
         if source == "override":
@@ -667,6 +681,7 @@ def _build_coverage(resolved: dict, keys_by_canonical: dict, caps: dict,
         models.append({
             "id": mid, "lanes": lanes_by_model.get(mid, []),
             "listed": listed, "catalog_available": available,
+            "control_plane": in_cp,
             "priced": priced, "source": source, "reason": reason,
         })
         if available:
@@ -674,6 +689,9 @@ def _build_coverage(resolved: dict, keys_by_canonical: dict, caps: dict,
             counts["invokable_priced" if priced else "invokable_unpriced"] += 1
         elif listed:
             counts["listed_not_available"] += 1
+    counts["invokable_not_in_control_plane"] = sum(
+        1 for m in models
+        if m["catalog_available"] and m["control_plane"] is False)
     return {"counts": counts, "models": models, "catalog_error": catalog_error}
 
 
@@ -683,6 +701,9 @@ def _coverage_attr(models: list) -> dict:
         "lanes": {"L": [{"S": ln} for ln in m["lanes"]]},
         "listed": {"BOOL": m["listed"]},
         "catalog_available": {"BOOL": m["catalog_available"]},
+        "control_plane": ({"BOOL": m["control_plane"]}
+                          if isinstance(m.get("control_plane"), bool)
+                          else {"NULL": True}),
         "priced": {"BOOL": m["priced"]},
         "source": ({"S": m["source"]} if m["source"] else {"NULL": True}),
         "reason": {"S": m["reason"]},
@@ -760,7 +781,8 @@ def handler(event, context):
             catalog_error = f"{e.__class__.__name__}: {e}"
             log.warning(f"mantle catalog fetch failed; recording partial coverage: {catalog_error}")
         caps = _served_caps()
-        coverage = _build_coverage(resolved, keys_by_canonical, caps, catalog_ids, catalog_error)
+        coverage = _build_coverage(resolved, keys_by_canonical, caps, catalog_ids,
+                                   catalog_error, cp_models=cp_models)
         _write_coverage(coverage, generation, now, REGION)
 
         partial = bool(failed)

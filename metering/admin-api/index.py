@@ -890,6 +890,7 @@ def _catalog() -> dict:
         gw_by_id[m.get("id", "")] = {
             "available": bool(m.get("catalog_available")),
             "listed": bool(m.get("listed")),
+            "control_plane": m.get("control_plane"),  # bool | None(unknown)
             "lanes": m.get("lanes") or [],
         }
     models: dict = {}

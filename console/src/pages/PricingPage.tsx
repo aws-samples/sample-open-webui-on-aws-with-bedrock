@@ -121,6 +121,11 @@ function GatewayBadges({ gw }: { gw: PriceRow['gateway'] }) {
   if (gw.available) badges.push(<Badge key="inv" color="green">invokable</Badge>);
   else if (gw.listed) badges.push(<Badge key="stale" color="red">stale caps</Badge>);
   else badges.push(<Badge key="na" color="grey">not available</Badge>);
+  if (gw.available && gw.control_plane === false) {
+    // serving traffic but absent from bedrock ListFoundationModels — possibly
+    // publicly retired (zombie). Signal for the operator, not a verdict.
+    badges.push(<Badge key="nocp" color="severity-high">no control-plane entry</Badge>);
+  }
   if (gw.listed && gw.lanes.length) {
     badges.push(
       <Badge key="lanes" color="blue">{gw.lanes.map((l) => l.replace('_', '-')).join(' · ')}</Badge>,

@@ -62,7 +62,8 @@ def test_listed_available_priced_is_ok_and_counted_invokable_priced():
     assert m["listed"] and m["catalog_available"] and m["priced"]
     assert m["reason"] == "ok" and m["lanes"] == ["chat_completions"]
     assert cov["counts"] == {"invokable": 1, "invokable_priced": 1,
-                             "invokable_unpriced": 0, "listed_not_available": 0}
+                             "invokable_unpriced": 0, "listed_not_available": 0,
+                             "invokable_not_in_control_plane": 0}
 
 
 def test_available_unpriced_is_no_pricing_row_and_invokable_unpriced():
@@ -91,7 +92,8 @@ def test_listed_not_available_is_stale_caps():
     assert m["listed"] and not m["catalog_available"]
     assert m["reason"] == "stale-caps"
     assert cov["counts"] == {"invokable": 0, "invokable_priced": 0,
-                             "invokable_unpriced": 0, "listed_not_available": 1}
+                             "invokable_unpriced": 0, "listed_not_available": 1,
+                             "invokable_not_in_control_plane": 0}
 
 
 def test_null_rates_when_only_one_direction_prices():

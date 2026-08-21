@@ -192,6 +192,10 @@ export type EffectiveGrid = Record<string, Record<string, number | null>>;
 export interface GatewayBlock {
   available: boolean;
   listed: boolean;
+  /** present in bedrock ListFoundationModels (third evidence plane). A model
+   *  serving traffic while absent here may be publicly retired (zombie) —
+   *  operator signal, not an automatic verdict. */
+  control_plane?: boolean | null;
   lanes: string[];
 }
 

@@ -119,6 +119,29 @@ def test_non_token_unknown_shapes_stay_out_of_the_unclassified_bucket():
 
 # ── 3. coverage honors operator OVERRIDE rows ────────────────────────────────
 
+
+def test_coverage_records_control_plane_presence():
+    """Third evidence plane (2026-08-21 re-examination): zai.glm-4.6 was
+    serving traffic (catalog available + real invoke 200) while absent from
+    bedrock ListFoundationModels and all public docs — a publicly retired
+    zombie the two-plane join could not distinguish from a new unpriced
+    model. cp-absence is recorded per model and counted, never auto-acted on
+    (current models like gpt-5.4/5.5 are also legitimately cp-absent)."""
+    mod = _load_refresher()
+    zombie, current = "zai.glm-4.6", "zai.glm-4.7"
+    cov = mod._build_coverage(
+        {}, {}, {"chat_completions": [zombie, current]},
+        {zombie, current}, None,
+        cp_models=[(current, "GLM 4.7", "Z AI")],  # zombie NOT in control plane
+    )
+    by_id = {m["id"]: m for m in cov["models"]}
+    assert by_id[zombie]["control_plane"] is False
+    assert by_id[current]["control_plane"] is True
+    assert cov["counts"]["invokable_not_in_control_plane"] == 1
+    # absence of a cp list at all (fetch failure) must not mark everything False-positively
+    cov2 = mod._build_coverage({}, {}, {}, {current}, None, cp_models=None)
+    assert cov2["counts"]["invokable_not_in_control_plane"] == 0
+
 def test_coverage_counts_override_priced_models_as_priced():
     mod = _load_refresher()
     fake = FakeDdb()

@@ -168,6 +168,7 @@ def test_catalog_row_carries_gateway_block_and_effective_grid():
     cat = mod._catalog()
     row = {m["model"]: m for m in cat["models"]}["a.m1"]
     assert row["gateway"] == {"available": True, "listed": True,
+                              "control_plane": None,  # unknown in this fixture
                               "lanes": ["chat_completions", "responses"]}
     # effective_grid is routing → direction → per-1M
     assert row["effective_grid"]["in_region"]["input"] == 5.0
