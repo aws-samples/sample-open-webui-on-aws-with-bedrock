@@ -34,6 +34,10 @@ _FILE_ORDER = [
     ("offer_foundation_models.json", "AmazonBedrockFoundationModels"),
     ("offer_bedrock.json", "AmazonBedrock"),
     ("offer_service.json", "AmazonBedrockService"),
+    # SYNTHETIC (adversarial review MINOR-3): pins DIRECT parses of the shapes
+    # no trimmed real fixture populates — cache_write_5m/30m durations and the
+    # latency_optimized tier — so those golden cells stop being fallback-only.
+    ("offer_synthetic_shapes.json", "AmazonBedrock"),
 ]
 
 # The full dimension grid the resolver understands. Kept explicit (not

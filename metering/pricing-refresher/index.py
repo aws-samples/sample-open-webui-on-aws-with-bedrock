@@ -665,6 +665,11 @@ def _emit_coverage_metrics(coverage: dict, unmatched: dict, rate_conflicts: int,
     _metric("PricingUnmatchedActionable", actionable)
     _metric("PricingDimensionUnclassified", unclassified)
     _metric("PricingRateConflict", rate_conflicts)
+    # Heartbeat for PricingCoverageStaleAlarm: the value gauges above use
+    # NOT_BREACHING (value alarms), so a refresher that silently stops running
+    # would otherwise read healthy forever. This datapoint's ABSENCE is the
+    # staleness signal (adversarial review MAJOR-1).
+    _metric("PricingCoverageComputed", 1)
 
 
 def handler(event, context):

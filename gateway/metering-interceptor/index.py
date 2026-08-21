@@ -115,6 +115,11 @@ _jwks: dict = {"keys": {}, "fetched": 0.0}
 _grace: dict = {}
 _grace_window: list = [0]
 
+# per-container last-emission time per model for the UnpricedAdmission metric —
+# bounds hot-path CloudWatch calls to one per model per pricing-cache window
+# (adversarial review MINOR-4)
+_unpriced_admission_seen: dict = {}
+
 
 def _metric(name: str, value: float = 1, dims: dict | None = None):
     try:
@@ -310,8 +315,15 @@ def _est_rates(model_raw: str) -> tuple[str, float, float]:
     rout = resolve_rate(entry, "output", routing=ref.routing).per_token() or 0.0
     # §3: an admission estimate that resolves NO rate is visible (metric only —
     # unpriced admission is still allowed, availability-first posture unchanged).
+    # Bounded to once per model per pricing-cache window so a busy unpriced
+    # model cannot turn the admission hot path into a per-request CloudWatch
+    # call (adversarial review MINOR-4); the alarmed coverage gauge is the
+    # authoritative signal, this metric is the live-traffic corroboration.
     if rin == 0.0 and rout == 0.0:
-        _metric("UnpricedAdmission")
+        now = time.time()
+        if now - _unpriced_admission_seen.get(ref.key, 0.0) >= _SHARED_PRICING_TTL:
+            _unpriced_admission_seen[ref.key] = now
+            _metric("UnpricedAdmission")
     return ref.key, rin, rout
 
 

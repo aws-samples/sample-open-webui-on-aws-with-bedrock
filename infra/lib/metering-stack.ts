@@ -491,6 +491,29 @@ export class MeteringStack extends cdk.Stack {
     });
     unclassifiedAlarm.addAlarmAction(new cwactions.SnsAction(this.alertsTopic));
 
+    // Staleness guard for the three gauge alarms above (adversarial review
+    // MAJOR-1): those use NOT_BREACHING so a refresher that silently STOPS
+    // running (schedule removed, function broken before first metric) would
+    // read healthy forever. The refresher emits PricingCoverageComputed=1 on
+    // every successful coverage write; two consecutive empty daily periods —
+    // BREACHING on missing data — means the coverage join is stale. Two
+    // periods (not one) so daily-emission jitter at a period boundary cannot
+    // flap the alarm.
+    const coverageStaleAlarm = new cloudwatch.Alarm(this, 'PricingCoverageStaleAlarm', {
+      alarmName: `${envPrefix}open-webui-metering-pricing-coverage-stale`,
+      alarmDescription: 'No pricing coverage computation in 2 daily periods — the pricing refresher is not running or fails before the coverage join.',
+      metric: new cloudwatch.Metric({
+        namespace: 'Metering', metricName: 'PricingCoverageComputed',
+        statistic: 'SampleCount', period: cdk.Duration.hours(24),
+      }),
+      comparisonOperator: cloudwatch.ComparisonOperator.LESS_THAN_THRESHOLD,
+      threshold: 1,
+      evaluationPeriods: 2,
+      datapointsToAlarm: 2,
+      treatMissingData: cloudwatch.TreatMissingData.BREACHING,
+    });
+    coverageStaleAlarm.addAlarmAction(new cwactions.SnsAction(this.alertsTopic));
+
     // ── Admin API: the operator control surface, outside Open WebUI ────────
     // Serves the CLI (scripts/set-quota.sh) AND the admin console (console/).
     const enforceMode = this.node.tryGetContext('meteringMode') === 'observe' ? 'OBSERVE' : 'ENFORCE';

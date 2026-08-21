@@ -1,0 +1,149 @@
+{
+  "_provenance": "SYNTHETIC fixture (not a trimmed real offer). Exists solely so the golden-rate harness pins DIRECT parses of shapes no real trimmed fixture populates: cache-write 5m/30m durations and the latency-optimized tier (adversarial review MINOR-3, design 06). Shapes mirror documented AWS usagetype grammars (see metering/pricing/offers.py docstring).",
+  "formatVersion": "v1.0",
+  "offerCode": "AmazonBedrock",
+  "version": "20260821000000",
+  "publicationDate": "2026-08-21T00:00:00Z",
+  "products": {
+    "SYNTHCW5M000001": {
+      "sku": "SYNTHCW5M000001",
+      "productFamily": "Amazon Bedrock",
+      "attributes": {
+        "servicecode": "AmazonBedrock",
+        "location": "US East (N. Virginia)",
+        "locationType": "AWS Region",
+        "usagetype": "USE1-synthetic.shapes-v1-mantle-cache-write-tokens-5m",
+        "operation": "",
+        "feature": "On-demand Inference",
+        "inferenceType": "Cache write 5m tokens",
+        "model": "synthetic.shapes-v1",
+        "provider": "Synthetic",
+        "regionCode": "us-east-1",
+        "servicename": "Amazon Bedrock"
+      }
+    },
+    "SYNTHCW30M00001": {
+      "sku": "SYNTHCW30M00001",
+      "productFamily": "Amazon Bedrock",
+      "attributes": {
+        "servicecode": "AmazonBedrock",
+        "location": "US East (N. Virginia)",
+        "locationType": "AWS Region",
+        "usagetype": "USE1-synthetic.shapes-v1-mantle-cache-write-tokens-30m",
+        "operation": "",
+        "feature": "On-demand Inference",
+        "inferenceType": "Cache write 30m tokens",
+        "model": "synthetic.shapes-v1",
+        "provider": "Synthetic",
+        "regionCode": "us-east-1",
+        "servicename": "Amazon Bedrock"
+      }
+    },
+    "SYNTHLATIN00001": {
+      "sku": "SYNTHLATIN00001",
+      "productFamily": "Amazon Bedrock",
+      "attributes": {
+        "servicecode": "AmazonBedrock",
+        "location": "US East (N. Virginia)",
+        "locationType": "AWS Region",
+        "usagetype": "USE1-synthetic.shapes-v1-input-tokens-latency-optimized",
+        "operation": "",
+        "feature": "On-demand Inference",
+        "inferenceType": "Input tokens latency optimized",
+        "model": "synthetic.shapes-v1",
+        "provider": "Synthetic",
+        "regionCode": "us-east-1",
+        "servicename": "Amazon Bedrock"
+      }
+    },
+    "SYNTHLATOUT0001": {
+      "sku": "SYNTHLATOUT0001",
+      "productFamily": "Amazon Bedrock",
+      "attributes": {
+        "servicecode": "AmazonBedrock",
+        "location": "US East (N. Virginia)",
+        "locationType": "AWS Region",
+        "usagetype": "USE1-synthetic.shapes-v1-output-tokens-latency-optimized",
+        "operation": "",
+        "feature": "On-demand Inference",
+        "inferenceType": "Output tokens latency optimized",
+        "model": "synthetic.shapes-v1",
+        "provider": "Synthetic",
+        "regionCode": "us-east-1",
+        "servicename": "Amazon Bedrock"
+      }
+    }
+  },
+  "terms": {
+    "OnDemand": {
+      "SYNTHCW5M000001": {
+        "SYNTHCW5M000001.JRTCKXETXF": {
+          "offerTermCode": "JRTCKXETXF",
+          "sku": "SYNTHCW5M000001",
+          "effectiveDate": "2026-08-01T00:00:00Z",
+          "priceDimensions": {
+            "SYNTHCW5M000001.JRTCKXETXF.6YS6EN2CT7": {
+              "rateCode": "SYNTHCW5M000001.JRTCKXETXF.6YS6EN2CT7",
+              "description": "$0.001 per 1K cache write 5m tokens for synthetic.shapes-v1 in US East (N. Virginia)",
+              "beginRange": "0", "endRange": "Inf",
+              "unit": "1K tokens",
+              "pricePerUnit": { "USD": "0.0010000000" }
+            }
+          },
+          "termAttributes": {}
+        }
+      },
+      "SYNTHCW30M00001": {
+        "SYNTHCW30M00001.JRTCKXETXF": {
+          "offerTermCode": "JRTCKXETXF",
+          "sku": "SYNTHCW30M00001",
+          "effectiveDate": "2026-08-01T00:00:00Z",
+          "priceDimensions": {
+            "SYNTHCW30M00001.JRTCKXETXF.6YS6EN2CT7": {
+              "rateCode": "SYNTHCW30M00001.JRTCKXETXF.6YS6EN2CT7",
+              "description": "$0.002 per 1K cache write 30m tokens for synthetic.shapes-v1 in US East (N. Virginia)",
+              "beginRange": "0", "endRange": "Inf",
+              "unit": "1K tokens",
+              "pricePerUnit": { "USD": "0.0020000000" }
+            }
+          },
+          "termAttributes": {}
+        }
+      },
+      "SYNTHLATIN00001": {
+        "SYNTHLATIN00001.JRTCKXETXF": {
+          "offerTermCode": "JRTCKXETXF",
+          "sku": "SYNTHLATIN00001",
+          "effectiveDate": "2026-08-01T00:00:00Z",
+          "priceDimensions": {
+            "SYNTHLATIN00001.JRTCKXETXF.6YS6EN2CT7": {
+              "rateCode": "SYNTHLATIN00001.JRTCKXETXF.6YS6EN2CT7",
+              "description": "$0.003 per 1K input tokens latency optimized for synthetic.shapes-v1 in US East (N. Virginia)",
+              "beginRange": "0", "endRange": "Inf",
+              "unit": "1K tokens",
+              "pricePerUnit": { "USD": "0.0030000000" }
+            }
+          },
+          "termAttributes": {}
+        }
+      },
+      "SYNTHLATOUT0001": {
+        "SYNTHLATOUT0001.JRTCKXETXF": {
+          "offerTermCode": "JRTCKXETXF",
+          "sku": "SYNTHLATOUT0001",
+          "effectiveDate": "2026-08-01T00:00:00Z",
+          "priceDimensions": {
+            "SYNTHLATOUT0001.JRTCKXETXF.6YS6EN2CT7": {
+              "rateCode": "SYNTHLATOUT0001.JRTCKXETXF.6YS6EN2CT7",
+              "description": "$0.006 per 1K output tokens latency optimized for synthetic.shapes-v1 in US East (N. Virginia)",
+              "beginRange": "0", "endRange": "Inf",
+              "unit": "1K tokens",
+              "pricePerUnit": { "USD": "0.0060000000" }
+            }
+          },
+          "termAttributes": {}
+        }
+      }
+    }
+  }
+}
