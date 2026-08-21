@@ -70,8 +70,10 @@ _QUALIFIERS: dict[str, tuple[str, str]] = {
 }
 # tokens that carry no axis meaning and are skipped silently once the
 # direction stem has been consumed (structural noise, never "unknown").
+# "text" is here because TEXT tokens are the modality this meter counts —
+# a text-input-tokens SKU is just the input rate.
 _NOISE = frozenset({"tokens", "token", "tokencount", "count",
-                    "cache", "million", "units", "flex"} - _TIERS)
+                    "cache", "million", "units", "flex", "text"} - _TIERS)
 # multiword markers the tokenizer folds into one vocabulary token
 _MULTIWORD = (
     (("cross", "region"), None),          # consumed; the following routing token wins
@@ -86,6 +88,17 @@ _EXCLUSIONS = (
     (lambda ut: "custom-model" in ut or "custommodel" in ut, "custom-model"),
     (lambda ut: "optimizeprompt" in ut, "apo-optimize-prompt"),
 )
+
+# Non-text token modalities, excluded when ADJACENT to the direction anchor
+# (USE1-NovaSonic-speech-input-tokens, Nova2.0Omni-input-audio-token-count,
+# InputVideoSecond): real billed dimensions, but for a modality this meter does
+# not count. Adjacency — not a raw substring — so a model NAME containing a
+# modality word cannot poison its own text-token SKUs. Without this rule the
+# tokenizer's anchor scan discards a leading modality token and the speech rate
+# collides onto the text leaf: the nova-sonic $0.06→$3.40 regression the
+# rate-diff gate caught live on 2026-08-21. "text" is deliberately NOT here —
+# text tokens are the metered modality (it is qualifier noise instead).
+_MODALITIES = frozenset({"speech", "audio", "video", "image", "images"})
 
 _TRAINING_RE = re.compile(r"-customization-training$")
 
@@ -253,6 +266,15 @@ def classify_usagetype(usagetype: str, service_code: str = "") -> Verdict:
         return Verdict(GRID, model_id=model_id,
                        classified=Classified("training", "standard", "in_region", "default"))
 
+    # non-text modality adjacent to the direction anchor (speech-input,
+    # input-audio, InputVideoSecond) -> named exclusion, never a text leaf
+    for i, t in enumerate(tokens):
+        if t in ("input", "output", "cache"):
+            if (i > 0 and tokens[i - 1] in _MODALITIES) or \
+               (i + 1 < len(tokens) and tokens[i + 1] in _MODALITIES):
+                return Verdict(EXCLUDED, rule="non-text-modality")
+            break
+
     direction, rest = _direction_from(tokens)
     if direction is None:
         return Verdict(UNCLASSIFIED)
@@ -328,13 +350,23 @@ def parse_offer(offer: dict, region: str, service_code: str,
         if attrs.get("regionCode") and attrs.get("regionCode") != region:
             continue
         usagetype = attrs.get("usagetype", "")
+        # only token-unit dimensions are in scope for the loud unknown bucket:
+        # a non-token product (images, minutes, TPM commitments) with an
+        # unknown shape is not a silently-dropped token rate (the live catalog
+        # carries hundreds of these; counting them made the unclassified alarm
+        # pure noise — 318 on 2026-08-21).
+        has_token_dim = any(
+            _TOKEN_UNITS.get((dim.get("unit") or "").strip().lower()) is not None
+            for term in ondemand.get(sku, {}).values()
+            for dim in term.get("priceDimensions", {}).values()
+        )
         verdict = classify_usagetype(usagetype, service_code)
         if verdict.kind == EXCLUDED:
-            if acc is not None:
+            if acc is not None and has_token_dim:
                 acc.excluded.append({"usage_type": usagetype, "rule": verdict.rule})
             continue
         if verdict.kind == UNCLASSIFIED:
-            if acc is not None:
+            if acc is not None and has_token_dim:
                 acc.unclassified.append({"usage_type": usagetype,
                                          "service_code": service_code})
             continue
@@ -351,7 +383,7 @@ def parse_offer(offer: dict, region: str, service_code: str,
             kind, identity, display = "name", name, name
         else:
             # a gridded dimension with no identity anchor is itself unknown
-            if acc is not None:
+            if acc is not None and has_token_dim:
                 acc.unclassified.append({"usage_type": usagetype,
                                          "service_code": service_code})
             continue

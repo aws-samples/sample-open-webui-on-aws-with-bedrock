@@ -97,6 +97,15 @@ class FakeDdb:
         item = self.items.get((Key["pk"]["S"], Key["sk"]["S"]))
         return {"Item": item} if item else {}
 
+    def batch_get_item(self, RequestItems=None, **kw):
+        table = next(iter(RequestItems))
+        found = []
+        for key in RequestItems[table]["Keys"]:
+            item = self.items.get((key["pk"]["S"], key["sk"]["S"]))
+            if item:
+                found.append(item)
+        return {"Responses": {table: found}, "UnprocessedKeys": {}}
+
     def query(self, TableName=None, KeyConditionExpression=None,
               ExpressionAttributeValues=None, **kw):
         pk = ExpressionAttributeValues[":p"]["S"]

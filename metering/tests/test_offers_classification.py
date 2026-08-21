@@ -55,7 +55,10 @@ def test_every_dimension_lands_in_exactly_one_bucket():
             assert v.classified is not None
         elif v.kind == EXCLUDED:
             excluded += 1
-            assert v.rule in ("custom-model", "apo-optimize-prompt")
+            # non-text-modality added after the live nova-sonic regression
+            # (speech-token SKUs colliding onto the text leaf, 2026-08-21)
+            assert v.rule in ("custom-model", "apo-optimize-prompt",
+                              "non-text-modality")
         else:
             unclassified += 1
     assert total == grid + excluded + unclassified

@@ -1,5 +1,5 @@
 {
- "_provenance": "Trimmed from the live AmazonBedrock us-east-1 offer file (version 20260723233555); values are real published rates.",
+ "_provenance": "Trimmed from the live AmazonBedrock us-east-1 offer file (version 20260723233555); values are real published rates. | 2026-08-21: +4 real Nova Sonic SKUs (speech/text x input/output) from the live us-east-1 file, offer version 20260820130114 \u2014 pins the non-text-modality exclusion (speech) and text-rate leaf.",
  "formatVersion": "v1.0",
  "offerCode": "AmazonBedrock",
  "version": "20260723233555",
@@ -427,6 +427,70 @@
     "provider": "Qwen",
     "regionCode": "us-east-1",
     "service_tier": "standard",
+    "servicename": "Amazon Bedrock"
+   }
+  },
+  "UEBA4FEJ7GCENDP4": {
+   "sku": "UEBA4FEJ7GCENDP4",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-NovaSonic-speech-output-tokens",
+    "operation": "",
+    "feature": "On-demand Inference",
+    "inferenceType": "Speech Understanding output token",
+    "model": "Nova Sonic",
+    "regionCode": "us-east-1",
+    "servicename": "Amazon Bedrock"
+   }
+  },
+  "CB7ENY8J6652YQA9": {
+   "sku": "CB7ENY8J6652YQA9",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-NovaSonic-text-output-tokens",
+    "operation": "",
+    "feature": "On-demand Inference",
+    "inferenceType": "Text output token",
+    "model": "Nova Sonic",
+    "regionCode": "us-east-1",
+    "servicename": "Amazon Bedrock"
+   }
+  },
+  "T2ZZEYJ6HBSGHATR": {
+   "sku": "T2ZZEYJ6HBSGHATR",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-NovaSonic-text-input-tokens",
+    "operation": "",
+    "feature": "On-demand Inference",
+    "inferenceType": "Text Input Token",
+    "model": "Nova Sonic",
+    "regionCode": "us-east-1",
+    "servicename": "Amazon Bedrock"
+   }
+  },
+  "UAHQDXPQ6PRJB6PU": {
+   "sku": "UAHQDXPQ6PRJB6PU",
+   "productFamily": "Amazon Bedrock",
+   "attributes": {
+    "servicecode": "AmazonBedrock",
+    "location": "US East (N. Virginia)",
+    "locationType": "AWS Region",
+    "usagetype": "USE1-NovaSonic-speech-input-tokens",
+    "operation": "",
+    "feature": "On-demand Inference",
+    "inferenceType": "Speech Understanding input token",
+    "model": "Nova Sonic",
+    "regionCode": "us-east-1",
     "servicename": "Amazon Bedrock"
    }
   }
@@ -951,6 +1015,90 @@
        "unit": "1K tokens",
        "pricePerUnit": {
         "USD": "0.0006000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "UEBA4FEJ7GCENDP4": {
+    "UEBA4FEJ7GCENDP4.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "UEBA4FEJ7GCENDP4",
+     "effectiveDate": "2026-08-01T00:00:00Z",
+     "priceDimensions": {
+      "UEBA4FEJ7GCENDP4.JRTCKXETXF.6YS6EN2CT7": {
+       "rateCode": "UEBA4FEJ7GCENDP4.JRTCKXETXF.6YS6EN2CT7",
+       "description": "$0.0136 per 1K tokens for USE1-NovaSonic-speech-output-tokens in US East (N. Virginia)",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0136000000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "CB7ENY8J6652YQA9": {
+    "CB7ENY8J6652YQA9.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "CB7ENY8J6652YQA9",
+     "effectiveDate": "2026-08-01T00:00:00Z",
+     "priceDimensions": {
+      "CB7ENY8J6652YQA9.JRTCKXETXF.6YS6EN2CT7": {
+       "rateCode": "CB7ENY8J6652YQA9.JRTCKXETXF.6YS6EN2CT7",
+       "description": "$0.00024 per 1K tokens for USE1-NovaSonic-text-output-tokens in US East (N. Virginia)",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0002400000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "T2ZZEYJ6HBSGHATR": {
+    "T2ZZEYJ6HBSGHATR.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "T2ZZEYJ6HBSGHATR",
+     "effectiveDate": "2026-08-01T00:00:00Z",
+     "priceDimensions": {
+      "T2ZZEYJ6HBSGHATR.JRTCKXETXF.6YS6EN2CT7": {
+       "rateCode": "T2ZZEYJ6HBSGHATR.JRTCKXETXF.6YS6EN2CT7",
+       "description": "$0.00006 per 1K tokens for USE1-NovaSonic-text-input-tokens in US East (N. Virginia)",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0000600000"
+       },
+       "appliesTo": []
+      }
+     },
+     "termAttributes": {}
+    }
+   },
+   "UAHQDXPQ6PRJB6PU": {
+    "UAHQDXPQ6PRJB6PU.JRTCKXETXF": {
+     "offerTermCode": "JRTCKXETXF",
+     "sku": "UAHQDXPQ6PRJB6PU",
+     "effectiveDate": "2026-08-01T00:00:00Z",
+     "priceDimensions": {
+      "UAHQDXPQ6PRJB6PU.JRTCKXETXF.6YS6EN2CT7": {
+       "rateCode": "UAHQDXPQ6PRJB6PU.JRTCKXETXF.6YS6EN2CT7",
+       "description": "$0.0034 per 1K tokens for USE1-NovaSonic-speech-input-tokens in US East (N. Virginia)",
+       "beginRange": "0",
+       "endRange": "Inf",
+       "unit": "1K tokens",
+       "pricePerUnit": {
+        "USD": "0.0034000000"
        },
        "appliesTo": []
       }

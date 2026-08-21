@@ -1223,7 +1223,16 @@ def handler(event, context):
         return _resp(200, _cached("pricing", _catalog))
 
     if route == "GET /pricing/coverage":
-        status, body = _cached("pricing_coverage", _coverage)
+        # cache HITS only: caching the 404 miss made the endpoint report "no
+        # coverage" for a full TTL after the first refresh completed (observed
+        # live 2026-08-21).
+        hit = _read_cache.get("pricing_coverage")
+        if hit and time.time() - hit[0] < READ_CACHE_TTL and hit[1][0] == 200:
+            status, body = hit[1]
+        else:
+            status, body = _coverage()
+            if status == 200:
+                _read_cache["pricing_coverage"] = (time.time(), (status, body))
         resp = _resp(status, body)
         if status == 200:
             # short cache: coverage refreshes on the daily/on-demand cadence, so

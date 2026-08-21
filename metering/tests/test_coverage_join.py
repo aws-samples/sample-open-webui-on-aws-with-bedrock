@@ -39,14 +39,19 @@ def _load_refresher():
 # ── _build_coverage: (listed × available × priced) combinations (contract §2) ──
 
 def _priced_stub(priced_ids):
-    """A _priced() that reports the given ids as aws-published-priced."""
-    def fn(resolved, keys_by_canonical, key):
+    """A _priced() that reports the given ids as aws-published-priced.
+
+    Signature tracks the live fix: coverage now consults OVERRIDE rows
+    (override_row kwarg) — see test_live_regressions for the override path.
+    """
+    def fn(resolved, keys_by_canonical, key, override_row=None):
         return (key in priced_ids, "aws-published" if key in priced_ids else None)
     return fn
 
 
 def _cov(mod, caps, catalog_ids, priced_ids, catalog_error=None):
     mod._priced = _priced_stub(priced_ids)
+    mod._override_rows = lambda keys: {}  # override reads covered elsewhere
     return mod._build_coverage({}, {}, caps, set(catalog_ids), catalog_error)
 
 
@@ -92,7 +97,7 @@ def test_listed_not_available_is_stale_caps():
 def test_null_rates_when_only_one_direction_prices():
     mod = _load_refresher()
     # _priced returns (False, "aws-published") ⇒ a row exists but a rate is null
-    mod._priced = lambda r, k, key: (False, "aws-published")
+    mod._priced = lambda r, k, key, override_row=None: (False, "aws-published")
     cov = mod._build_coverage({}, {}, {"chat_completions": ["a.m1"]}, {"a.m1"}, None)
     m = {x["id"]: x for x in cov["models"]}["a.m1"]
     assert m["reason"] == "null-rates" and not m["priced"]

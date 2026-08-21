@@ -58,7 +58,7 @@ for _p in (_HERE, os.path.join(_HERE, "..")):  # Lambda task root / repo tree
         sys.path.insert(0, _p)
 
 from pricing import identity, offers  # noqa: E402
-from pricing.resolver import UNIT_PER_1M, resolve_rate  # noqa: E402
+from pricing.resolver import UNIT_PER_1M, resolve_rate, unwrap_item  # noqa: E402
 
 log = logging.getLogger()
 log.setLevel(logging.INFO)
@@ -564,13 +564,49 @@ def _lanes_by_model(caps: dict) -> dict:
     return {mid: sorted(lanes) for mid, lanes in out.items()}
 
 
-def _priced(resolved: dict, keys_by_canonical: dict, model_key: str) -> tuple[bool, str | None]:
+def _override_rows(universe_keys: set) -> dict:
+    """OVERRIDE rows for the coverage universe, keyed by catalog key.
+
+    One BatchGetItem round (universe is ~60 models; chunked at the 100-key
+    API limit). Operator overrides are owned by the admin API — the coverage
+    join only READS them, so a publishing-gap model priced by override counts
+    as priced (live 2026-08-21 finding: coverage reported the 7 overridden
+    openai.* models unpriced because this read was missing).
+    """
+    keys = [{"pk": {"S": f"PRICING#{k}"}, "sk": {"S": "OVERRIDE"}}
+            for k in sorted(universe_keys)]
+    out: dict = {}
+    for i in range(0, len(keys), 100):
+        chunk = keys[i:i + 100]
+        try:
+            resp = ddb.batch_get_item(RequestItems={TABLE: {"Keys": chunk}})
+        except Exception as e:  # noqa: BLE001 — coverage degrades, never raises
+            log.warning(f"override batch read failed: {e}")
+            continue
+        for it in resp.get("Responses", {}).get(TABLE, []):
+            pk = it.get("pk", {}).get("S", "")
+            out[pk.removeprefix("PRICING#")] = it
+        # single retry for unprocessed keys; a miss degrades to unpriced=alarm
+        unproc = resp.get("UnprocessedKeys", {}).get(TABLE, {}).get("Keys")
+        if unproc:
+            try:
+                resp2 = ddb.batch_get_item(RequestItems={TABLE: {"Keys": unproc}})
+                for it in resp2.get("Responses", {}).get(TABLE, []):
+                    pk = it.get("pk", {}).get("S", "")
+                    out[pk.removeprefix("PRICING#")] = it
+            except Exception:  # noqa: BLE001
+                pass
+    return out
+
+
+def _priced(resolved: dict, keys_by_canonical: dict, model_key: str,
+            override_row: dict | None = None) -> tuple[bool, str | None]:
     """(priced, source) for a catalog key via the production resolver.
 
-    Priced ⇔ the resolver returns a non-null input AND output rate. `source`
-    is the reachable label (override|aws-published|None) — overrides are owned
-    by the admin API and not present in `resolved`, so a published rate is what
-    this join can attest to; an unpriced model reports source=None.
+    Priced ⇔ the resolver returns a non-null input AND output rate from the
+    SAME entry shape the settle path uses: operator OVERRIDE outranks the
+    published grid. `source` is the winning label
+    (override|aws-published|None).
     """
     canonical = None
     for c, keys in keys_by_canonical.items():
@@ -578,14 +614,22 @@ def _priced(resolved: dict, keys_by_canonical: dict, model_key: str) -> tuple[bo
             canonical = c
             break
     entry_row = resolved.get(canonical) if canonical else None
-    if not entry_row or not entry_row.get("grid"):
+    published = ({"rates": entry_row["grid"], "_UNIT": UNIT_PER_1M}
+                 if entry_row and entry_row.get("grid") else None)
+    override = unwrap_item(override_row) if override_row else None
+    if not published and not override:
         return False, None
-    entry = {"override": None, "published": {"rates": entry_row["grid"], "_UNIT": UNIT_PER_1M}}
-    rin = resolve_rate(entry, "input").usd_per_1m
-    rout = resolve_rate(entry, "output").usd_per_1m
-    if rin is not None and rout is not None:
-        return True, "aws-published"
-    return False, "aws-published" if (rin is not None or rout is not None) else None
+    entry = {"override": override, "published": published}
+    rin = resolve_rate(entry, "input")
+    rout = resolve_rate(entry, "output")
+    if rin.usd_per_1m is not None and rout.usd_per_1m is not None:
+        # the resolver names the winning side (override outranks published)
+        return True, ("override" if "override" in (rin.source, rout.source)
+                      else "aws-published")
+    if rin.usd_per_1m is not None or rout.usd_per_1m is not None:
+        partial = rin if rin.usd_per_1m is not None else rout
+        return False, partial.source if partial.source != "unpriced" else None
+    return False, None
 
 
 def _build_coverage(resolved: dict, keys_by_canonical: dict, caps: dict,
@@ -599,6 +643,7 @@ def _build_coverage(resolved: dict, keys_by_canonical: dict, caps: dict,
     lanes_by_model = _lanes_by_model(caps)
     listed_ids = set(lanes_by_model)
     universe = sorted(listed_ids | catalog_ids)
+    overrides = _override_rows({identity.parse_model_ref(m).key for m in universe})
 
     models = []
     counts = {"invokable": 0, "invokable_priced": 0, "invokable_unpriced": 0,
@@ -607,7 +652,10 @@ def _build_coverage(resolved: dict, keys_by_canonical: dict, caps: dict,
         key = identity.parse_model_ref(mid).key
         listed = mid in listed_ids
         available = mid in catalog_ids
-        priced, source = _priced(resolved, keys_by_canonical, key)
+        priced, source = _priced(resolved, keys_by_canonical, key,
+                                 override_row=overrides.get(key))
+        if source == "override":
+            source = "OVERRIDE"  # contract §2 spelling
         if listed and not available:
             reason = "stale-caps"
         elif priced:
