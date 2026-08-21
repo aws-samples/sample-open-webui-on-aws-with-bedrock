@@ -144,13 +144,13 @@ front. Notes:
   writes one coverage item — per-model `{listed, catalog_available, priced,
   source, reason}` plus counts. This turns "a model is invokable but has no
   price" from a silent gap into a **named, alarmed** condition
-  (`UnpricedGatewayModels`). Baseline measured 2026-08-20/21 (us-east-1, refresh
-  generation 20): chat 41/46 priced, responses 6/13 priced, messages 5/5 priced;
-  8 distinct invokable-unpriced models, all the GPT-5.x/GLM mantle
-  publishing-gap family. *Expected* after this change deploys and the 7
-  override-able models are entered: `invokable_unpriced` narrows to
-  `[zai.glm-4.6]` (or `[]` if its lane is removed) — the parent records the live
-  post-deploy count.
+  (`UnpricedGatewayModels`). Pre-override baseline (2026-08-20/21, us-east-1,
+  refresh generation 20): chat 41/46 priced, responses 6/13 priced, messages 5/5
+  priced; 8 distinct invokable-unpriced models, all the GPT-5.x/GLM mantle
+  publishing-gap family. **Live-verified 2026-08-21 (refresh generation 24)**,
+  after the 7 model-card-provenance operator overrides: invokable 54 / priced 53 /
+  `invokable_unpriced == [zai.glm-4.6]` — the one model with no AWS-published
+  rate anywhere, held alarmed by design pending an operator lane decision.
 - **Unmatched Price List entries** (`PRICING#_UNMATCHED`, console Unmatched
   queue): AWS publishes a token rate but no model id could be resolved without
   guessing. These are classified by `reason` and split for alerting:
@@ -204,11 +204,11 @@ values.
 
 | Alarm (`metricName`) | Fires when | Baseline | What to do |
 |---|---|---|---|
-| `UnpricedGatewayModels` | a model the gateway serves is invokable but has no resolvable rate (coverage join, ≥ 1) | 8 (the GPT-5.x/GLM family) | Run the override runbook below for the 7 model-card-published ids; escalate `zai.glm-4.6` (no AWS rate — do **not** invent one). *Expected* → 1 (`zai.glm-4.6`) or 0. |
+| `UnpricedGatewayModels` | a model the gateway serves is invokable but has no resolvable rate (coverage join, ≥ 1) | 1 (`zai.glm-4.6`) — live-verified 2026-08-21 after the 7 GPT-5.x operator overrides; the pre-override baseline was 8 | Run the override runbook below when a new gap appears; `zai.glm-4.6` stays alarmed **by design** (no AWS-published rate exists — do **not** invent one) until the operator removes it from the lane or AWS publishes. |
 | `UnpricedModel` | an unpriced model was actually **settled** (reactive) | OK | Same fix as above; this fires only on live traffic to an unpriced model. |
 | `UnpricedAdmission` | the admission estimate resolved no rate for a request | — | Same underlying gap; confirms an unpriced model is being called, not just listed. |
 | `PricingUnmatchedActionable` | an **ambiguous** Price List name (>1 candidate twin) is queued (≥ 1) | OK (all 49 unmatched are historical `no-control-plane-match`) | Open the console Unmatched queue, bind the ambiguous name to the correct model id (audited `PRICING#_ALIAS`), refresh. |
-| `PricingDimensionUnclassified` | the parser saw a token usage type it could neither classify nor match to the exclusion list (≥ 1) | 0 (17 drops today, all intentional exclusions) | Inspect the `unclassified` list on `GET /pricing` / refresh meta; a new AWS usage-type shape needs a parser update — file it, don't hand-edit rows. |
+| `PricingDimensionUnclassified` | the parser saw a token usage type it could neither classify nor match to the exclusion list (≥ 1) | 0 — live-verified 2026-08-21 (79 named exclusions: 62 non-text-modality + 17 custom-model/APO) | Inspect the `unclassified` list on `GET /pricing` / refresh meta; a new AWS usage-type shape needs a parser update — file it, don't hand-edit rows. |
 | `PricingRateConflict` | two SKUs gave conflicting rates for the same model+leaf (kept the max, recorded the conflict) | 0 | Review the `rate_conflicts` entries on the refresh meta; usually a transient AWS publishing overlap — confirm the kept (max) rate is acceptable. |
 | `PricingRefreshFailure` | a refresh run failed | OK | Old rates are retained (Req 4.4); check the refresher logs. A partial fetch (one offer file down) does **not** delete that file's rows. |
 | `PricingCoverageComputed` (stale alarm) | **no** coverage computation datapoint for 2 daily periods — the refresher is not running at all, or dies before the coverage join | OK | The value alarms above stay quiet on missing data, so this heartbeat's *absence* is the signal. Check the EventBridge schedule and the refresher function; trigger a manual refresh (`POST /pricing/refresh`) and confirm the alarm clears. |
