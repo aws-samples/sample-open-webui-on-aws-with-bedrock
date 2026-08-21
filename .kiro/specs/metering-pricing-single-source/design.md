@@ -50,7 +50,7 @@ consumers so estimates and settlement cannot disagree.
 | D4 | Unpriced models **still serve**, priced at $0, alarmed | Preserves existing design M3 behaviour. Blocking is a quota-policy decision, not a pricing one, and is out of scope. |
 | D5 | Store rates **per 1M tokens** as published | The offer files publish per-1K or per-1M; storing the published per-1M decimal keeps the value exactly auditable against the pricing page and removes a float-dust class of drift. Per-token is derived at computation. Ledger `rate_in`/`rate_out` stay per-token so historical rows stay comparable. |
 | D6 | Shared resolver copied into both assets at synth | Matches the existing pattern (`metering-stack.ts` already stages `index.py` + JSON into a temp dir; `gateway-stack.ts` already copies a config file into the interceptor asset). Avoids introducing a Lambda-layer artifact the repo has no precedent for. |
-| D7 | No new GSI | The catalog is ~150 rows; the admin API's bounded `PRICING#` Scan is adequate. DynamoDB permits one GSI add per stack update, which is a documented upgrade hazard in this stack. |
+| D7 | No new GSI | The catalog is ~150 rows; the admin API's bounded `PRICING#` Scan is adequate. DynamoDB permits one GSI add per stack update, which is a documented upgrade hazard in this stack. (Refined by 06/D9: the bounded Scan became a meta-list `BatchGetItem` — same no-GSI decision, fewer read units.) |
 
 ## 3. Data model
 
@@ -332,15 +332,24 @@ IAM grant is needed.
 - Stage `metering/pricing/*.py` into the debit and refresher assets (D6).
 - Grant the refresher `bedrock:ListFoundationModels` on `*` (a list operation with
   no resource-level scoping), and nothing else Bedrock-related (Req 11.1).
-- New alarm `PricingUnmatchedAlarm` on `Metering/PricingUnmatched > 0`, treated as
-  a warning surface rather than a page.
+- Alarms (all namespace `Metering`, warning-surface unless noted): the
+  refresh-failure and unpriced alarms, plus the coverage/observability set added
+  by the gateway-pricing-coverage design
+  ([`docs/plans/metering-admin-console/06-GATEWAY-PRICING-COVERAGE.md`](../../../docs/plans/metering-admin-console/06-GATEWAY-PRICING-COVERAGE.md)):
+  `UnpricedGatewayModels` (Req 13.4), `PricingUnmatchedActionable` (Req 14.4,
+  which replaces the earlier raw `PricingUnmatched` count alarm),
+  `PricingDimensionUnclassified` (Req 14.1), and `PricingRateConflict` (Req 14.3).
 
 `infra/lib/gateway-stack.ts`: replace the `config/model-prices.json` copy with the
 shared resolver copy.
 
 Metrics (namespace `Metering`): `PricingRefreshFailure`, `PricingRefreshModels`,
-`PricingUnmatched`, `PricingRoutingFallback`, `PricingTierFallback`,
-`UnpricedModel` (existing).
+`PricingRoutingFallback`, `PricingTierFallback`, `UnpricedModel` (existing),
+`UnpricedAdmission` (admission-path estimate resolved no rate, Req 14.5),
+`UnpricedGatewayModels` (coverage join, Req 13.4), `PricingUnmatchedActionable`
+(Req 14.4), `PricingDimensionUnclassified` (Req 14.1), and `PricingRateConflict`
+(Req 14.3). The coverage item itself is `PRICING#_COVERAGE/META`; see 06 for the
+join, the coverage universe, and the `GET /pricing/coverage` surface.
 
 ## 9. Testing
 

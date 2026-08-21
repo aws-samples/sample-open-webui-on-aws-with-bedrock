@@ -2,41 +2,43 @@
 # SPDX-License-Identifier: MIT-0
 """Rate resolution — one resolver shared by settle and estimate paths.
 
-Precedence is exactly: operator override → AWS-published → unpriced
-(Requirement 9.3). Rates are stored per 1,000,000 tokens (design D5);
-`RateResult.per_token()` derives the per-token value at computation time.
+Precedence is exactly: operator override -> AWS-published -> unpriced
+(Requirement 9.3). Rates are stored per 1,000,000 tokens; ``RateResult`` /
+``per_token()`` derives the per-token value at computation time.
+
+Design 06-GATEWAY-PRICING-COVERAGE D6: the resolver reads BOTH override and
+published rows through ONE ``_grid`` normalizer, and the routing x ladder x
+direction fallback is a single ordered candidate-key CHAIN (an explicit,
+readable, testable sequence) rather than three nested loops guarded by three
+boolean flags. The legacy ``tiers``->grid lift and the flat per-token
+``input``/``output`` tolerance are DELETED: verified against the live table,
+zero published rows use either shape, and the current refresher never writes
+them (design D6 "Live row shapes").
 
 Selection within the published grid (design §5):
 
-  1. Override first. Overrides are flat per direction (design D3) — tier,
-     routing and context are not consulted.
-  2. Routing key: `geo` maps to `in_region` because AWS publishes no
-     on-demand geo token rate (Requirement 7.4) — a literal `geo` key is
-     preferred if one is ever published (Requirement 7.5). This mapping is
-     NOT a fallback: it is the documented correct rate for geo routing, and
-     stays auditable because `matched_routing` records the key that priced
-     the request (Requirement 7.9's substitution marker is reserved for
-     ladder exhaustion, where the request shape had no published rate).
+  1. Override first (flat per direction — tier/routing/context not consulted).
+  2. Routing key: ``geo`` maps to ``in_region`` because AWS publishes no
+     on-demand geo token rate (Requirement 7.4); a literal ``geo`` key wins
+     if ever published (Requirement 7.5). The mapping is the documented
+     correct rate, not a fallback — ``matched_routing`` records the priced key.
   3. In-routing ladder, first hit wins:
-     (tier, context) → (tier, default) → (standard, context) → (standard, default)
-  4. Cross-routing fallback: repeat the ladder under the other published
-     routing keys with `routing_fallback=True` (Requirements 7.7, 7.8).
+     (tier, context) -> (tier, default) -> (standard, context) -> (standard, default)
+  4. Cross-routing fallback: repeat the ladder under the other routing keys
+     with ``routing_fallback=True`` (Requirements 7.7, 7.8).
   5. Otherwise unpriced: record tokens, price zero, never guess.
-
-Row-shape tolerance: this resolver reads both the current row contract
-(`rates` grid map + `_UNIT="USD/1M-tokens"`) and the legacy shapes that
-precede the first refresh after an upgrade (flat per-token `input`/`output`
-attributes, and the old `tiers` JSON attribute on published rows), so the
-deploy-to-first-refresh window and preserved operator overrides
-(Requirement 10.2) keep pricing.
 """
 
 from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from typing import Iterator
 
 UNIT_PER_1M = "USD/1M-tokens"
+
+# ── D10: one cache TTL for the package (estimate + settle share it) ──────────
+PRICING_CACHE_TTL_S = 300
 
 _TIER_STANDARD = "standard"
 _CONTEXT_DEFAULT = "default"
@@ -60,7 +62,7 @@ class RateResult:
 
     @property
     def fallback(self) -> bool:
-        """True when any substitution beyond the geo→in_region mapping occurred."""
+        """True when any substitution beyond the geo->in_region mapping occurred."""
         return self.routing_fallback or self.tier_fallback or self.direction_fallback
 
     def per_token(self) -> float | None:
@@ -104,38 +106,14 @@ def _as_float(v) -> float | None:
         return None
 
 
-def _override_rates(row: dict | None) -> dict:
-    """Per-direction per-1M rates from an OVERRIDE row.
+def _grid(row: dict | None) -> dict:
+    """The ``rates`` grid map from a row, or {} — the ONE row normalizer (D6).
 
-    Current shape: {"rates": {dir: per_1m}, "_UNIT": "USD/1M-tokens"}.
-    Legacy shape (pre-migration, preserved per Requirement 10.2): flat
-    per-token `input`/`output` attributes — normalized to per-1M here.
-    """
-    if not row:
-        return {}
-    rates = row.get("rates")
-    if isinstance(rates, str):
-        try:
-            rates = json.loads(rates)
-        except ValueError:
-            rates = None
-    if isinstance(rates, dict) and row.get("_UNIT") == UNIT_PER_1M:
-        return {k: f for k, v in rates.items() if (f := _as_float(v)) is not None}
-    out = {}
-    for direction in ("input", "output", "cache_read", "cache_write"):
-        v = _as_float(row.get(direction) or row.get(direction.replace("_", "-")))
-        if v is not None:
-            out[direction] = v * 1_000_000.0  # legacy rows store per-token
-    return out
-
-
-def _published_grid(row: dict | None) -> dict:
-    """The routing → tier → context → direction grid from a PUBLISHED row.
-
-    Legacy published rows (old refresher) carried a `tiers` JSON attribute of
-    per-token rates with no routing/context axes; they are lifted into
-    {in_region: {tier: {default: {dir: per_1m}}}} so the upgrade window
-    between deploy and first refresh still prices (then GC replaces them).
+    Both OVERRIDE and PUBLISHED rows carry the same current contract:
+    ``{"rates": <grid map>, "_UNIT": "USD/1M-tokens"}``. ``rates`` may arrive
+    as a JSON string (some write paths persist it that way). Any other shape
+    yields {} — the dead ``tiers`` lift and flat ``input``/``output``
+    tolerance were removed (no live row uses them).
     """
     if not row:
         return {}
@@ -147,33 +125,25 @@ def _published_grid(row: dict | None) -> dict:
             rates = None
     if isinstance(rates, dict) and row.get("_UNIT") == UNIT_PER_1M:
         return rates
-    tiers = row.get("tiers")
-    if isinstance(tiers, str):
-        try:
-            tiers = json.loads(tiers)
-        except ValueError:
-            tiers = None
-    if isinstance(tiers, dict):
-        lifted: dict = {}
-        for tier, dirs in tiers.items():
-            if not isinstance(dirs, dict):
-                continue
-            cell = {}
-            for d, v in dirs.items():
-                f = _as_float(v)
-                if f is not None:
-                    cell[d.replace("-", "_")] = f * 1_000_000.0
-            if cell:
-                lifted.setdefault(tier, {})[_CONTEXT_DEFAULT] = cell
-        return {"in_region": lifted} if lifted else {}
     return {}
+
+
+def _override_rates(row: dict | None) -> dict:
+    """Per-direction per-1M rates from an OVERRIDE row.
+
+    Overrides are flat per direction: the override grid, if present, is a
+    ``{direction: per_1m}`` map (design D3). Read through the shared ``_grid``
+    normalizer, then flatten only the leaf direction map.
+    """
+    rates = _grid(row)
+    return {k: f for k, v in rates.items() if (f := _as_float(v)) is not None}
 
 
 def _direction_chain(direction: str) -> list[str]:
     """Directions to try, most specific first (Requirements 6.4, 6.5).
 
-    Cache-write durations fall back to the undated cache-write rate; any
-    cache direction falls back to `input` last — every step beyond the
+    A cache-write duration falls back to the undated cache-write rate; any
+    cache direction falls back to ``input`` last — every step beyond the
     first is a flagged substitution.
     """
     chain = [direction]
@@ -191,7 +161,8 @@ def _ladder(tier: str, context: str) -> list[tuple[str, str]]:
         (_TIER_STANDARD, context),
         (_TIER_STANDARD, _CONTEXT_DEFAULT),
     ]
-    seen, out = set(), []
+    seen: set = set()
+    out = []
     for step in steps:
         if step not in seen:
             seen.add(step)
@@ -199,18 +170,56 @@ def _ladder(tier: str, context: str) -> list[tuple[str, str]]:
     return out
 
 
-def _search_routing(routing_grid: dict, direction: str, tier: str, context: str):
-    """First ladder hit within one routing key: (value, tier, context, direction)."""
-    for t, c in _ladder(tier, context):
-        cell = routing_grid.get(t)
-        cell = cell.get(c) if isinstance(cell, dict) else None
-        if not isinstance(cell, dict):
-            continue
-        for d in _direction_chain(direction):
-            v = _as_float(cell.get(d))
-            if v is not None:
-                return v, t, c, d
-    return None
+@dataclass(frozen=True)
+class _Candidate:
+    routing: str
+    tier: str
+    context: str
+    direction: str
+    routing_fallback: bool
+    tier_fallback: bool
+    direction_fallback: bool
+
+
+def _candidate_chain(direction: str, tier: str, routing: str, context: str,
+                     grid: dict) -> Iterator[_Candidate]:
+    """Yield resolution candidates in exact effective order (D6).
+
+    One readable generator replaces the former 3-nested-loop + 3-boolean
+    fallback matrix. Order (unchanged, proven by the golden test):
+      routing: mapped-request-routing first, then the remaining published
+               routings (geo->in_region mapping applied, not counted as a
+               routing fallback);
+      within a routing: the (tier, context) ladder;
+      within a cell: the direction chain (most specific first).
+    ``*_fallback`` flags are computed per candidate from how far it strayed
+    from the requested (routing, tier, context, direction).
+    """
+    mapped = routing
+    if routing == "geo" and "geo" not in grid:
+        mapped = "in_region"
+    routings = [mapped] + [r for r in _ROUTING_ORDER if r != mapped]
+    for ri, rkey in enumerate(routings):
+        for t, c in _ladder(tier, context):
+            for d in _direction_chain(direction):
+                yield _Candidate(
+                    routing=rkey,
+                    tier=t,
+                    context=c,
+                    direction=d,
+                    routing_fallback=ri > 0,
+                    tier_fallback=(t != tier or c != context),
+                    direction_fallback=(d != direction),
+                )
+
+
+def _lookup(grid: dict, cand: _Candidate) -> float | None:
+    cell = grid.get(cand.routing)
+    cell = cell.get(cand.tier) if isinstance(cell, dict) else None
+    cell = cell.get(cand.context) if isinstance(cell, dict) else None
+    if not isinstance(cell, dict):
+        return None
+    return _as_float(cell.get(cand.direction))
 
 
 def resolve_rate(
@@ -222,12 +231,13 @@ def resolve_rate(
 ) -> RateResult:
     """Resolve one rate from a catalog entry.
 
-    `entry` is {"override": plain row | None, "published": plain row | None}
-    (see `unwrap_item` for converting DynamoDB items). Returns UNPRICED-like
-    result rather than raising; never invents a rate.
+    ``entry`` is {"override": plain row | None, "published": plain row | None}
+    (see ``unwrap_item`` for converting DynamoDB items). Returns an
+    UNPRICED-like result rather than raising; never invents a rate.
     """
     tier = tier or _TIER_STANDARD
     context = context or _CONTEXT_DEFAULT
+
     ov = _override_rates(entry.get("override"))
     if direction in ov:
         row = entry.get("override") or {}
@@ -242,32 +252,23 @@ def resolve_rate(
             version=f"override:{int(stamp)}" if isinstance(stamp, (int, float)) else "override",
         )
 
-    grid = _published_grid(entry.get("published"))
+    grid = _grid(entry.get("published"))
     if grid:
         pub = entry.get("published") or {}
         version = str(pub.get("offer_version") or pub.get("price_map_version") or "")
-        # geo maps to in_region unless a real geo key is published (Req 7.4/7.5)
-        mapped = routing
-        if routing == "geo" and "geo" not in grid:
-            mapped = "in_region"
-        candidates = [mapped] + [r for r in _ROUTING_ORDER if r != mapped]
-        for i, rkey in enumerate(candidates):
-            routing_grid = grid.get(rkey)
-            if not isinstance(routing_grid, dict):
-                continue
-            hit = _search_routing(routing_grid, direction, tier, context)
-            if hit:
-                v, t, c, d = hit
+        for cand in _candidate_chain(direction, tier, routing, context, grid):
+            v = _lookup(grid, cand)
+            if v is not None:
                 return RateResult(
                     usd_per_1m=v,
                     source="aws-published",
-                    matched_routing=rkey,
-                    matched_tier=t,
-                    matched_context=c,
-                    matched_direction=d,
-                    routing_fallback=i > 0,
-                    tier_fallback=t != tier or c != context,
-                    direction_fallback=d != direction,
+                    matched_routing=cand.routing,
+                    matched_tier=cand.tier,
+                    matched_context=cand.context,
+                    matched_direction=cand.direction,
+                    routing_fallback=cand.routing_fallback,
+                    tier_fallback=cand.tier_fallback,
+                    direction_fallback=cand.direction_fallback,
                     version=version,
                 )
     return UNPRICED

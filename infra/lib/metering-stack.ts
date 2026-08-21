@@ -37,6 +37,12 @@ export interface MeteringStackProps extends cdk.StackProps {
   gatewayId: string;
   /** Gateway inference base URL (…/inference), for the canaries. */
   gatewayInferenceUrl: string;
+  /**
+   * The gateway's metering interceptor Lambda (only present when metering is
+   * on). The pricing refresher reads its MODEL_CAPS env var
+   * (lambda:GetFunctionConfiguration) for the gateway↔pricing coverage join.
+   */
+  interceptorFunction?: lambda.Function;
   /** Managed Login domain host (…amazoncognito.com), for the console's OIDC flow. */
   userPoolDomainName: string;
   /** Resource-name prefix (e.g. "dev", "prod"). Empty for the default single-env deploy. */
@@ -365,6 +371,14 @@ export class MeteringStack extends cdk.Stack {
     //    touched by a refresh.
     const refresherStagingDir = stageWithPricing(
       'metering-pricing-refresher-', path.join(__dirname, '..', '..', 'metering', 'pricing-refresher'));
+    // The coverage join falls back to the packaged capability matrix when the
+    // interceptor's MODEL_CAPS env var is unset (model refresher disabled) —
+    // the SAME file the interceptor itself falls back to (contract §8). Stage
+    // it beside the handler so the fallback resolves in the Lambda task root.
+    fs.copyFileSync(
+      path.join(__dirname, '..', '..', 'config', 'model-capabilities.json'),
+      path.join(refresherStagingDir, 'model-capabilities.json'),
+    );
     const pricingRefresherFn = new lambda.Function(this, 'PricingRefresherFn', {
       functionName: `${envPrefix}open-webui-metering-pricing-refresher`,
       runtime: lambda.Runtime.PYTHON_3_12,
@@ -372,7 +386,18 @@ export class MeteringStack extends cdk.Stack {
       code: lambda.Code.fromAsset(refresherStagingDir),
       timeout: cdk.Duration.minutes(5),
       memorySize: 512,
-      environment: { TABLE: this.table.tableName, REGION: cdk.Aws.REGION },
+      environment: {
+        TABLE: this.table.tableName,
+        REGION: cdk.Aws.REGION,
+        // Coverage join (D1/D2): the mantle catalog region and the interceptor
+        // whose served MODEL_CAPS the join reads. INTERCEPTOR_FUNCTION_NAME is
+        // set only when the gateway created the metering interceptor; absent ⇒
+        // the join uses the packaged capability matrix (contract §8).
+        MANTLE_REGION: cdk.Aws.REGION,
+        ...(props.interceptorFunction
+          ? { INTERCEPTOR_FUNCTION_NAME: props.interceptorFunction.functionName }
+          : {}),
+      },
       logRetention: logs.RetentionDays.ONE_MONTH,
     });
     this.table.grantReadWriteData(pricingRefresherFn);
@@ -383,6 +408,25 @@ export class MeteringStack extends cdk.Stack {
       actions: ['bedrock:ListFoundationModels'],
       resources: ['*'],
     }));
+    // Coverage join (D1/D2): read the gateway's live bedrock-mantle catalog
+    // (SigV4 GET). bedrock-mantle is its own IAM service prefix — reuse the
+    // exact action the gateway refresher/execution role uses (bedrock-mantle:*;
+    // no read-only/resource-scoped action exists for the mantle HTTP API).
+    pricingRefresherFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['bedrock-mantle:*'],
+      resources: ['*'],
+    }));
+    // Coverage join: read the served MODEL_CAPS off the interceptor Lambda's
+    // configuration (only when the interceptor exists — metering on).
+    if (props.interceptorFunction) {
+      pricingRefresherFn.addToRolePolicy(new iam.PolicyStatement({
+        actions: ['lambda:GetFunctionConfiguration'],
+        resources: [
+          props.interceptorFunction.functionArn,
+          `${props.interceptorFunction.functionArn}:*`,
+        ],
+      }));
+    }
     // Daily refresh (published rates change infrequently; overrides are instant).
     new events.Rule(this, 'PricingRefreshSchedule', {
       schedule: events.Schedule.rate(cdk.Duration.hours(24)),
@@ -399,13 +443,15 @@ export class MeteringStack extends cdk.Stack {
       treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
     });
     pricingRefreshAlarm.addAlarmAction(new cwactions.SnsAction(this.alertsTopic));
-    // Unresolved published rates are a work queue, not a page: warn so the
-    // operator binds them in the console (Req 3.3, design §8).
+    // Unresolved published rates are a work queue, not a page. D8 rewires this
+    // alarm from the raw unmatched count to PricingUnmatchedActionable — only
+    // AMBIGUOUS entries (the refresher found >1 candidate and refused to guess)
+    // are actionable; historical no-match entries are counted but not alarmed.
     const pricingUnmatchedAlarm = new cloudwatch.Alarm(this, 'PricingUnmatchedAlarm', {
       alarmName: `${envPrefix}open-webui-metering-pricing-unmatched`,
-      alarmDescription: 'Price List entries with no resolvable Bedrock model id — review the Unmatched queue on the console pricing page.',
+      alarmDescription: 'Ambiguous Price List entries (>1 candidate model id, unresolved) — bind them on the console pricing page.',
       metric: new cloudwatch.Metric({
-        namespace: 'Metering', metricName: 'PricingUnmatched',
+        namespace: 'Metering', metricName: 'PricingUnmatchedActionable',
         statistic: 'Maximum', period: cdk.Duration.hours(24),
       }),
       threshold: 1,
@@ -413,6 +459,60 @@ export class MeteringStack extends cdk.Stack {
       treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
     });
     pricingUnmatchedAlarm.addAlarmAction(new cwactions.SnsAction(this.alertsTopic));
+
+    // Invokable-but-unpriced gateway models (D3): a model the gateway serves
+    // (catalog-available) that the resolver cannot price. Proactive, named
+    // condition — the refresher emits it every run so it clears when empty.
+    const unpricedGatewayAlarm = new cloudwatch.Alarm(this, 'UnpricedGatewayModelsAlarm', {
+      alarmName: `${envPrefix}open-webui-metering-unpriced-gateway-models`,
+      alarmDescription: 'Gateway models that are invokable but have no resolvable price — add operator overrides or a lane-removal decision.',
+      metric: new cloudwatch.Metric({
+        namespace: 'Metering', metricName: 'UnpricedGatewayModels',
+        statistic: 'Maximum', period: cdk.Duration.hours(24),
+      }),
+      threshold: 1,
+      evaluationPeriods: 1,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+    unpricedGatewayAlarm.addAlarmAction(new cwactions.SnsAction(this.alertsTopic));
+
+    // Unclassified pricing dimensions (D5): a usage type the parser could not
+    // classify and did not silently drop — surfaces as a loud unknown bucket.
+    const unclassifiedAlarm = new cloudwatch.Alarm(this, 'PricingDimensionUnclassifiedAlarm', {
+      alarmName: `${envPrefix}open-webui-metering-pricing-dimension-unclassified`,
+      alarmDescription: 'Price List usage types the parser could not classify — review the unclassified bucket on the console.',
+      metric: new cloudwatch.Metric({
+        namespace: 'Metering', metricName: 'PricingDimensionUnclassified',
+        statistic: 'Maximum', period: cdk.Duration.hours(24),
+      }),
+      threshold: 1,
+      evaluationPeriods: 1,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+    unclassifiedAlarm.addAlarmAction(new cwactions.SnsAction(this.alertsTopic));
+
+    // Staleness guard for the three gauge alarms above (adversarial review
+    // MAJOR-1): those use NOT_BREACHING so a refresher that silently STOPS
+    // running (schedule removed, function broken before first metric) would
+    // read healthy forever. The refresher emits PricingCoverageComputed=1 on
+    // every successful coverage write; two consecutive empty daily periods —
+    // BREACHING on missing data — means the coverage join is stale. Two
+    // periods (not one) so daily-emission jitter at a period boundary cannot
+    // flap the alarm.
+    const coverageStaleAlarm = new cloudwatch.Alarm(this, 'PricingCoverageStaleAlarm', {
+      alarmName: `${envPrefix}open-webui-metering-pricing-coverage-stale`,
+      alarmDescription: 'No pricing coverage computation in 2 daily periods — the pricing refresher is not running or fails before the coverage join.',
+      metric: new cloudwatch.Metric({
+        namespace: 'Metering', metricName: 'PricingCoverageComputed',
+        statistic: 'SampleCount', period: cdk.Duration.hours(24),
+      }),
+      comparisonOperator: cloudwatch.ComparisonOperator.LESS_THAN_THRESHOLD,
+      threshold: 1,
+      evaluationPeriods: 2,
+      datapointsToAlarm: 2,
+      treatMissingData: cloudwatch.TreatMissingData.BREACHING,
+    });
+    coverageStaleAlarm.addAlarmAction(new cwactions.SnsAction(this.alertsTopic));
 
     // ── Admin API: the operator control surface, outside Open WebUI ────────
     // Serves the CLI (scripts/set-quota.sh) AND the admin console (console/).
@@ -510,6 +610,10 @@ export class MeteringStack extends cdk.Stack {
       ['/alert-subscriptions', [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.POST, apigwv2.HttpMethod.DELETE]],
       ['/config', [apigwv2.HttpMethod.GET]],
       ['/pricing', [apigwv2.HttpMethod.GET]],
+      // the dedicated coverage read (contract §5). Missing in the first deploy:
+      // the handler had the route but API Gateway did not — both live
+      // validation rounds saw API-GW's own {"message":"Not Found"}.
+      ['/pricing/coverage', [apigwv2.HttpMethod.GET]],
       ['/pricing/{model}', [apigwv2.HttpMethod.PUT, apigwv2.HttpMethod.DELETE]],
       ['/pricing/refresh', [apigwv2.HttpMethod.POST]],
       ['/pricing/alias', [apigwv2.HttpMethod.POST]],

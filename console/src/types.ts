@@ -10,6 +10,14 @@ export interface ConsoleConfig {
   apiBase: string;
 }
 
+/** Coverage counts (contract §2): universe = union(served caps, live catalog). */
+export interface CoverageCounts {
+  invokable: number;
+  invokable_priced: number;
+  invokable_unpriced: number;
+  listed_not_available: number;
+}
+
 export interface ModuleConfig {
   enforce_mode: string;
   pricing?: {
@@ -20,6 +28,10 @@ export interface ModuleConfig {
     refreshed_at?: number | null;
     partial?: boolean;
     region?: string;
+    /** exact regex source of identity.MODEL_ID_RE (contract §5 _pricing_meta) */
+    model_id_pattern?: string;
+    /** coverage counts block + computed_at from the coverage item (null if absent) */
+    coverage?: (CoverageCounts & { computed_at?: number }) | null;
   };
   admin_groups: string[];
   defaults: { hard_limit_usd: number; soft_limit_usd: number; rpm_limit: number };
@@ -169,6 +181,24 @@ export interface SearchUser {
 /** routing → tier → context → direction → USD per 1M tokens */
 export type RateGrid = Record<string, Record<string, Record<string, Record<string, number>>>>;
 
+/**
+ * Server-computed standard grid (contract §5): the resolver's standard/default
+ * chain result per routing mode, replacing the console's old local gridStd().
+ * Shape: routing → direction → USD per 1M tokens (null when unpriced).
+ */
+export type EffectiveGrid = Record<string, Record<string, number | null>>;
+
+/** Per-model gateway coverage block (contract §5 _catalog rows). */
+export interface GatewayBlock {
+  available: boolean;
+  listed: boolean;
+  /** present in bedrock ListFoundationModels (third evidence plane). A model
+   *  serving traffic while absent here may be publicly retired (zombie) —
+   *  operator signal, not an automatic verdict. */
+  control_plane?: boolean | null;
+  lanes: string[];
+}
+
 export interface PriceOverride {
   /** current contract: per-1M rates map */
   rates?: Record<string, number>;
@@ -199,6 +229,14 @@ export interface PriceRow {
     output_per_1m: number | null;
     source: 'override' | 'aws-published' | 'unpriced';
   };
+  /**
+   * Server-computed standard grid per routing mode (contract §5). The console
+   * renders this instead of re-deriving from `rates` locally (D11: gridStd
+   * deleted). routing → direction → USD per 1M tokens.
+   */
+  effective_grid?: EffectiveGrid | null;
+  /** gateway coverage: is this model catalog-available / lane-listed? (§5) */
+  gateway?: GatewayBlock | null;
   override?: PriceOverride | null;
 }
 
@@ -207,9 +245,22 @@ export interface UnmatchedRow {
   provider?: string;
   service_code?: string;
   reason: 'no-control-plane-match' | 'ambiguous-match' | 'no-token-rates' | string;
+  /** D8 classification: no-match = historical (collapsed), ambiguous = actionable. */
+  class?: 'no-match' | 'ambiguous';
   candidate_rates?: RateGrid;
   refresh_generation?: number;
   updated_at?: number;
+}
+
+/** Per-model coverage row (contract §2), surfaced in the coverage strip. */
+export interface CoverageModel {
+  id: string;
+  lanes: string[];
+  listed: boolean;
+  catalog_available: boolean;
+  priced: boolean;
+  source: 'OVERRIDE' | 'aws-published' | null;
+  reason: 'ok' | 'no-pricing-row' | 'null-rates' | 'stale-caps' | string;
 }
 
 export interface PricingAlias {
@@ -235,6 +286,8 @@ export interface PricingCatalog {
     region?: string;
     refreshed_at?: number;
     partial?: boolean;
+    /** coverage counts + per-model list from PRICING#_COVERAGE (null if absent) */
+    coverage?: (CoverageCounts & { computed_at?: number; models?: CoverageModel[] }) | null;
   };
 }
 

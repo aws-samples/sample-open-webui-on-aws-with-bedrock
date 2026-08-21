@@ -12,6 +12,8 @@ import {
   Badge,
   Box,
   Button,
+  ColumnLayout,
+  Container,
   ContentLayout,
   ExpandableSection,
   Flashbar,
@@ -21,6 +23,7 @@ import {
   FormField,
   Input,
   Pagination,
+  Popover,
   SpaceBetween,
   StatusIndicator,
   Table,
@@ -30,7 +33,15 @@ import { useMemo, useState } from 'react';
 import { api, ApiError } from '../api';
 import { useApiData } from '../components/useApiData';
 import { ago } from '../format';
-import type { PriceRow, PricingCatalog, RateGrid, UnmatchedRow } from '../types';
+import type {
+  CoverageModel,
+  EffectiveGrid,
+  ModuleConfig,
+  PriceRow,
+  PricingCatalog,
+  RateGrid,
+  UnmatchedRow,
+} from '../types';
 
 const PAGE = 25;
 
@@ -40,9 +51,61 @@ function perM(v: number | null | undefined): string {
   return `$${v.toLocaleString('en-US', { maximumFractionDigits: 2 })}/M`;
 }
 
-function gridStd(rates: RateGrid | null | undefined, routing: string, direction: string): number | null {
+/**
+ * Read the server-computed effective grid (D11): routing → direction → per-1M.
+ * Replaces the deleted local gridStd() resolver re-implementation — the server
+ * now runs the production resolver and hands us the standard/default chain
+ * result, so the console renders truth instead of re-deriving it.
+ */
+function effGrid(grid: EffectiveGrid | null | undefined, routing: string, direction: string): number | null {
+  const v = grid?.[routing]?.[direction];
+  return typeof v === 'number' ? v : null;
+}
+
+/** Unmatched candidate rates are the raw 4-level grid; read the standard leaf. */
+function candStd(rates: RateGrid | null | undefined, routing: string, direction: string): number | null {
   const v = rates?.[routing]?.standard?.default?.[direction];
   return typeof v === 'number' ? v : null;
+}
+
+/** Shared column set for the ambiguous + historical unmatched tables. */
+function unmatchedColumns(onBind: (u: UnmatchedRow) => void) {
+  return [
+    { id: 'name', header: 'Price List name', cell: (u: UnmatchedRow) => <Box variant="samp">{u.price_list_name}</Box>, minWidth: 220 },
+    { id: 'provider', header: 'Provider', cell: (u: UnmatchedRow) => u.provider || '–', width: 120 },
+    { id: 'svc', header: 'Offer file', cell: (u: UnmatchedRow) => <Box fontSize="body-s">{u.service_code || '–'}</Box>, width: 220 },
+    {
+      id: 'reason',
+      header: 'Reason',
+      cell: (u: UnmatchedRow) => {
+        const ambiguous = u.class === 'ambiguous' || u.reason === 'ambiguous-match';
+        return (
+          <StatusIndicator type={ambiguous ? 'warning' : 'info'}>
+            {u.class ?? u.reason}
+          </StatusIndicator>
+        );
+      },
+      width: 160,
+    },
+    {
+      id: 'rates',
+      header: 'Published in / out',
+      cell: (u: UnmatchedRow) => (
+        <Box textAlign="right">
+          {perM(candStd(u.candidate_rates, 'in_region', 'input') ?? candStd(u.candidate_rates, 'global', 'input'))}
+          {' / '}
+          {perM(candStd(u.candidate_rates, 'in_region', 'output') ?? candStd(u.candidate_rates, 'global', 'output'))}
+        </Box>
+      ),
+      width: 160,
+    },
+    {
+      id: 'bind',
+      header: '',
+      cell: (u: UnmatchedRow) => <Button variant="inline-link" onClick={() => onBind(u)}>Bind to model id</Button>,
+      width: 150,
+    },
+  ];
 }
 
 function SourceBadge({ source }: { source: PriceRow['effective']['source'] }) {
@@ -51,10 +114,151 @@ function SourceBadge({ source }: { source: PriceRow['effective']['source'] }) {
   return <StatusIndicator type="warning">unpriced</StatusIndicator>;
 }
 
+/** Per-row gateway coverage badges (D11): invokable / listed lanes / stale caps. */
+function GatewayBadges({ gw }: { gw: PriceRow['gateway'] }) {
+  if (!gw) return <Box color="text-body-secondary">–</Box>;
+  const badges = [];
+  if (gw.available) badges.push(<Badge key="inv" color="green">invokable</Badge>);
+  else if (gw.listed) badges.push(<Badge key="stale" color="red">stale caps</Badge>);
+  else badges.push(<Badge key="na" color="grey">not available</Badge>);
+  if (gw.available && gw.control_plane === false) {
+    // serving traffic but absent from bedrock ListFoundationModels — possibly
+    // publicly retired (zombie). Signal for the operator, not a verdict.
+    badges.push(<Badge key="nocp" color="severity-high">no control-plane entry</Badge>);
+  }
+  if (gw.listed && gw.lanes.length) {
+    badges.push(
+      <Badge key="lanes" color="blue">{gw.lanes.map((l) => l.replace('_', '-')).join(' · ')}</Badge>,
+    );
+  } else if (gw.available && !gw.listed) {
+    badges.push(<Badge key="unlisted" color="grey">unlisted</Badge>);
+  }
+  return <SpaceBetween direction="horizontal" size="xxs">{badges}</SpaceBetween>;
+}
+
+const COVERAGE_REASON: Record<string, string> = {
+  'no-pricing-row': 'No AWS-published rate and no operator override — an AWS publishing gap.',
+  'null-rates': 'A pricing row exists but resolves to null input/output rates.',
+  'stale-caps': 'Listed in served capabilities but no longer available on the live gateway catalog.',
+  ok: 'Priced.',
+};
+
+/**
+ * Coverage summary strip (D11): invokable & priced / invokable & UNPRICED /
+ * listed-but-unavailable, with the unpriced set called out prominently by name
+ * and reason. Renders a graceful notice when coverage is absent (§5 404/null).
+ */
+function CoverageStrip({ meta }: { meta: PricingCatalog['meta'] | undefined }) {
+  const cov = meta?.coverage;
+  if (!cov) {
+    return (
+      <Container header={<Header variant="h2">Gateway coverage</Header>}>
+        <Alert type="info">
+          No coverage snapshot yet. Coverage joins the served model capabilities and the live gateway
+          catalog to the price catalog; it is computed at the end of each pricing refresh. Click
+          “Refresh from AWS” to compute it.
+        </Alert>
+      </Container>
+    );
+  }
+  const models = cov.models ?? [];
+  const unpriced = models.filter((m) => m.catalog_available && !m.priced);
+  const listedNa = models.filter((m) => m.listed && !m.catalog_available);
+  return (
+    <Container
+      header={
+        <Header
+          variant="h2"
+          description={cov.computed_at ? `Joined ${ago(cov.computed_at)}.` : undefined}
+        >
+          Gateway coverage
+        </Header>
+      }
+    >
+      <SpaceBetween size="m">
+        <ColumnLayout columns={3} variant="text-grid">
+          <div>
+            <Box variant="awsui-key-label">Invokable &amp; priced</Box>
+            <Box fontSize="display-l" fontWeight="bold" color="text-status-success">
+              {cov.invokable_priced}
+            </Box>
+            <Box fontSize="body-s" color="text-body-secondary">of {cov.invokable} invokable</Box>
+          </div>
+          <div>
+            <Box variant="awsui-key-label">Invokable &amp; UNPRICED</Box>
+            <Box
+              fontSize="display-l"
+              fontWeight="bold"
+              color={cov.invokable_unpriced > 0 ? 'text-status-error' : 'text-status-success'}
+            >
+              {cov.invokable_unpriced}
+            </Box>
+            <Box fontSize="body-s" color="text-body-secondary">
+              {cov.invokable_unpriced > 0 ? 'alarmed — priced from no source' : 'none'}
+            </Box>
+          </div>
+          <div>
+            <Box variant="awsui-key-label">Listed but unavailable</Box>
+            <Box fontSize="display-l" fontWeight="bold" color="text-status-info">
+              {cov.listed_not_available}
+            </Box>
+            <Box fontSize="body-s" color="text-body-secondary">stale caps — not a quota risk</Box>
+          </div>
+        </ColumnLayout>
+
+        {unpriced.length > 0 && (
+          <Alert type="warning" header={`${unpriced.length} invokable model${unpriced.length > 1 ? 's are' : ' is'} UNPRICED`}>
+            <Table
+              variant="embedded"
+              items={unpriced}
+              trackBy="id"
+              columnDefinitions={[
+                { id: 'id', header: 'Model', cell: (m: CoverageModel) => <Box variant="samp">{m.id}</Box>, minWidth: 260 },
+                {
+                  id: 'lanes',
+                  header: 'Lanes',
+                  cell: (m) => (m.lanes.length ? m.lanes.map((l) => l.replace('_', '-')).join(' · ') : <Box color="text-body-secondary">unlisted</Box>),
+                  width: 200,
+                },
+                {
+                  id: 'reason',
+                  header: 'Reason',
+                  cell: (m) => (
+                    <Popover dismissButton={false} position="top" size="medium" triggerType="text" content={COVERAGE_REASON[m.reason] ?? m.reason}>
+                      <StatusIndicator type="warning">{m.reason}</StatusIndicator>
+                    </Popover>
+                  ),
+                  minWidth: 180,
+                },
+              ]}
+            />
+          </Alert>
+        )}
+
+        {listedNa.length > 0 && (
+          <ExpandableSection
+            headerText={`Listed but unavailable (${listedNa.length})`}
+            variant="footer"
+            headerDescription="In served capabilities but not on the live gateway catalog — stale caps, visible but not a quota risk."
+          >
+            <SpaceBetween direction="horizontal" size="xxs">
+              {listedNa.map((m) => (
+                <Badge key={m.id} color="grey">{m.id}</Badge>
+              ))}
+            </SpaceBetween>
+          </ExpandableSection>
+        )}
+      </SpaceBetween>
+    </Container>
+  );
+}
+
 export default function PricingPage() {
   const { data, loading, error, refresh } = useApiData<PricingCatalog>('/pricing');
+  const { data: cfg } = useApiData<ModuleConfig>('/config');
   const [filterText, setFilterText] = useState('');
   const [showUnpriced, setShowUnpriced] = useState(false);
+  const [showHistorical, setShowHistorical] = useState(false);
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<PriceRow[]>([]);
   const [editing, setEditing] = useState<PriceRow | null>(null);
@@ -65,6 +269,15 @@ export default function PricingPage() {
   const rows = data?.models ?? [];
   const unmatched = data?.unmatched ?? [];
   const aliases = data?.aliases ?? [];
+  const modelIdPattern = cfg?.pricing?.model_id_pattern;
+
+  // D8: ambiguous entries are actionable and stay prominent; no-match entries are
+  // historical (legacy display-name products with no control-plane twin) and are
+  // collapsed by default behind a "show historical" toggle.
+  const isHistorical = (u: UnmatchedRow) =>
+    u.class === 'no-match' || (u.class === undefined && u.reason === 'no-control-plane-match');
+  const ambiguousUnmatched = useMemo(() => unmatched.filter((u) => !isHistorical(u)), [unmatched]);
+  const historicalUnmatched = useMemo(() => unmatched.filter(isHistorical), [unmatched]);
   const filtered = useMemo(() => {
     let r = rows;
     if (showUnpriced) r = r.filter((m) => m.effective.source === 'unpriced');
@@ -170,6 +383,8 @@ export default function PricingPage() {
           </Alert>
         )}
 
+        <CoverageStrip meta={data?.meta} />
+
         <Table
           items={visible}
           loading={loading}
@@ -227,7 +442,7 @@ export default function PricingPage() {
                 <Box textAlign="right">
                   {m.effective.source === 'override'
                     ? `${perM(m.effective.input_per_1m)} / ${perM(m.effective.output_per_1m)}`
-                    : `${perM(gridStd(m.rates, 'in_region', 'input'))} / ${perM(gridStd(m.rates, 'in_region', 'output'))}`}
+                    : `${perM(effGrid(m.effective_grid, 'in_region', 'input'))} / ${perM(effGrid(m.effective_grid, 'in_region', 'output'))}`}
                 </Box>
               ),
               width: 170,
@@ -239,7 +454,7 @@ export default function PricingPage() {
                   cell: (m: PriceRow) =>
                     m.routing_modes?.includes('global') ? (
                       <Box textAlign="right">
-                        {perM(gridStd(m.rates, 'global', 'input'))} / {perM(gridStd(m.rates, 'global', 'output'))}
+                        {perM(effGrid(m.effective_grid, 'global', 'input'))} / {perM(effGrid(m.effective_grid, 'global', 'output'))}
                       </Box>
                     ) : (
                       <Box textAlign="right" color="text-body-secondary">–</Box>
@@ -263,6 +478,7 @@ export default function PricingPage() {
               width: 150,
             },
             { id: 'source', header: 'Source', cell: (m) => <SourceBadge source={m.effective.source} />, width: 140 },
+            { id: 'gateway', header: 'Gateway', cell: (m) => <GatewayBadges gw={m.gateway} />, minWidth: 170 },
             {
               id: 'note',
               header: 'Note',
@@ -281,73 +497,81 @@ export default function PricingPage() {
           }
         />
 
-        <ExpandableSection
-          headerText={`Unmatched Price List entries (${unmatched.length})`}
-          variant="container"
-          defaultExpanded={unmatched.length > 0 && unmatched.length <= 10}
-          headerDescription="AWS publishes a token rate for these, but no Bedrock model id could be resolved without guessing. Bind a model id to price it on the next refresh — bindings outrank automatic matching."
+        <Container
+          header={
+            <Header
+              variant="h2"
+              counter={`(${ambiguousUnmatched.length} actionable · ${historicalUnmatched.length} historical)`}
+              description="AWS publishes a token rate for these, but no Bedrock model id could be resolved without guessing. Bind a model id to price it on the next refresh — bindings outrank automatic matching."
+              actions={
+                historicalUnmatched.length > 0 ? (
+                  <Button
+                    variant={showHistorical ? 'primary' : 'normal'}
+                    iconName={showHistorical ? 'angle-up' : 'angle-down'}
+                    onClick={() => setShowHistorical((v) => !v)}
+                  >
+                    {showHistorical ? 'Hide historical' : `Show historical (${historicalUnmatched.length})`}
+                  </Button>
+                ) : undefined
+              }
+            >
+              Unmatched Price List entries
+            </Header>
+          }
         >
-          <Table
-            items={unmatched}
-            variant="embedded"
-            trackBy="price_list_name"
-            columnDefinitions={[
-              { id: 'name', header: 'Price List name', cell: (u: UnmatchedRow) => <Box variant="samp">{u.price_list_name}</Box>, minWidth: 220 },
-              { id: 'provider', header: 'Provider', cell: (u) => u.provider || '–', width: 120 },
-              { id: 'svc', header: 'Offer file', cell: (u) => <Box fontSize="body-s">{u.service_code || '–'}</Box>, width: 220 },
-              {
-                id: 'reason',
-                header: 'Reason',
-                cell: (u) => (
-                  <StatusIndicator type={u.reason === 'ambiguous-match' ? 'warning' : 'info'}>
-                    {u.reason}
-                  </StatusIndicator>
-                ),
-                width: 200,
-              },
-              {
-                id: 'rates',
-                header: 'Published in / out',
-                cell: (u) => (
-                  <Box textAlign="right">
-                    {perM(gridStd(u.candidate_rates, 'in_region', 'input') ?? gridStd(u.candidate_rates, 'global', 'input'))}
-                    {' / '}
-                    {perM(gridStd(u.candidate_rates, 'in_region', 'output') ?? gridStd(u.candidate_rates, 'global', 'output'))}
-                  </Box>
-                ),
-                width: 160,
-              },
-              {
-                id: 'bind',
-                header: '',
-                cell: (u) => <Button variant="inline-link" onClick={() => setBinding(u)}>Bind to model id</Button>,
-                width: 150,
-              },
-            ]}
-            empty={<Box textAlign="center" padding="m" color="inherit">Every published token rate is bound to a model id.</Box>}
-          />
-          {aliases.length > 0 && (
-            <Box margin={{ top: 'm' }}>
-              <Header variant="h3">Operator bindings ({aliases.length})</Header>
+          <SpaceBetween size="l">
+            {/* D8: ambiguous = actionable (refresher refused to guess between >1 twins), alarmed. */}
+            <div>
+              <Header variant="h3" description="Multiple candidate model ids — the refresher refused to guess. Bind the correct one.">
+                Ambiguous ({ambiguousUnmatched.length})
+              </Header>
               <Table
-                items={aliases}
+                items={ambiguousUnmatched}
                 variant="embedded"
                 trackBy="price_list_name"
-                columnDefinitions={[
-                  { id: 'name', header: 'Price List name', cell: (a) => <Box variant="samp">{a.price_list_name}</Box> },
-                  { id: 'model', header: 'Bound model id', cell: (a) => <Box variant="samp">{a.model_id}</Box> },
-                  { id: 'when', header: 'Updated', cell: (a) => (a.updated_at ? ago(a.updated_at) : '–'), width: 140 },
-                  {
-                    id: 'rm',
-                    header: '',
-                    cell: (a) => <Button variant="inline-link" onClick={() => void unbind(a.price_list_name)}>Remove</Button>,
-                    width: 110,
-                  },
-                ]}
+                columnDefinitions={unmatchedColumns((u) => setBinding(u))}
+                empty={<Box textAlign="center" padding="m" color="inherit">No ambiguous entries — nothing needs an operator decision.</Box>}
               />
-            </Box>
-          )}
-        </ExpandableSection>
+            </div>
+
+            {/* D8: no-match = historical (legacy display-name products, no live twin), collapsed. */}
+            {showHistorical && historicalUnmatched.length > 0 && (
+              <div>
+                <Header variant="h3" description="Legacy Price List products with no current control-plane twin. Kept and counted, not alarmed.">
+                  Historical / no-match ({historicalUnmatched.length})
+                </Header>
+                <Table
+                  items={historicalUnmatched}
+                  variant="embedded"
+                  trackBy="price_list_name"
+                  columnDefinitions={unmatchedColumns((u) => setBinding(u))}
+                />
+              </div>
+            )}
+
+            {aliases.length > 0 && (
+              <div>
+                <Header variant="h3">Operator bindings ({aliases.length})</Header>
+                <Table
+                  items={aliases}
+                  variant="embedded"
+                  trackBy="price_list_name"
+                  columnDefinitions={[
+                    { id: 'name', header: 'Price List name', cell: (a) => <Box variant="samp">{a.price_list_name}</Box> },
+                    { id: 'model', header: 'Bound model id', cell: (a) => <Box variant="samp">{a.model_id}</Box> },
+                    { id: 'when', header: 'Updated', cell: (a) => (a.updated_at ? ago(a.updated_at) : '–'), width: 140 },
+                    {
+                      id: 'rm',
+                      header: '',
+                      cell: (a) => <Button variant="inline-link" onClick={() => void unbind(a.price_list_name)}>Remove</Button>,
+                      width: 110,
+                    },
+                  ]}
+                />
+              </div>
+            )}
+          </SpaceBetween>
+        </Container>
       </SpaceBetween>
 
       <OverrideModal
@@ -360,6 +584,7 @@ export default function PricingPage() {
         }}
       />
       <BindModal
+        modelIdPattern={modelIdPattern}
         row={binding}
         onDismiss={() => setBinding(null)}
         onSaved={(name) => {
@@ -451,8 +676,11 @@ function OverrideModal(props: { row: PriceRow | null; onDismiss: () => void; onS
           <FormField label="Output rate (USD per 1M tokens)">
             <Input value={out} onChange={({ detail }) => setOut(detail.value)} type="number" inputMode="decimal" placeholder="e.g. 15.00" />
           </FormField>
-          <FormField label="Note — optional" description="Why this custom rate (shown in the catalog + audit trail).">
-            <Input value={note} onChange={({ detail }) => setNote(detail.value)} placeholder="e.g. negotiated EDP rate" />
+          <FormField
+            label="Provenance note — optional"
+            description="Where this rate came from (shown in the catalog + audit trail). For a publishing-gap override, cite the AWS model-card page / tier."
+          >
+            <Input value={note} onChange={({ detail }) => setNote(detail.value)} placeholder="e.g. AWS model-card 272K-ctx standard tier, 2026-08" />
           </FormField>
         </SpaceBetween>
       </Form>
@@ -460,11 +688,28 @@ function OverrideModal(props: { row: PriceRow | null; onDismiss: () => void; onS
   );
 }
 
-function BindModal(props: { row: UnmatchedRow | null; onDismiss: () => void; onSaved: (name: string) => void }) {
-  const { row, onDismiss, onSaved } = props;
+function BindModal(props: {
+  row: UnmatchedRow | null;
+  modelIdPattern?: string;
+  onDismiss: () => void;
+  onSaved: (name: string) => void;
+}) {
+  const { row, modelIdPattern, onDismiss, onSaved } = props;
   const [modelId, setModelId] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // D11: validate against the server-supplied identity.MODEL_ID_RE source
+  // (meta.model_id_pattern) rather than a console-local literal — one source of
+  // truth for what a settle-reachable model id is. Compile once per pattern.
+  const idRe = useMemo(() => {
+    if (!modelIdPattern) return null;
+    try {
+      return new RegExp(modelIdPattern);
+    } catch {
+      return null;
+    }
+  }, [modelIdPattern]);
 
   useMemo(() => {
     if (row) {
@@ -478,8 +723,14 @@ function BindModal(props: { row: UnmatchedRow | null; onDismiss: () => void; onS
   const save = async () => {
     setErr(null);
     const id = modelId.trim();
-    if (!/^[a-z0-9]+\.[a-z0-9][a-z0-9.:\-]*$/.test(id)) {
+    // Client-side gate uses the server pattern when present; when the pattern
+    // could not be loaded the server still validates on PUT (defense in depth).
+    if (idRe && !idRe.test(id)) {
       setErr('Enter a Bedrock model id like vendor.model-name (lowercase).');
+      return;
+    }
+    if (!idRe && !id) {
+      setErr('Enter a Bedrock model id.');
       return;
     }
     setSaving(true);

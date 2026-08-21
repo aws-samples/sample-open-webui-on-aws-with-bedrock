@@ -191,9 +191,17 @@ def test_override_beats_published_and_reverts_on_delete():
     assert (r.usd_per_1m, r.source) == (5.5, "aws-published")
 
 
-def test_legacy_per_token_override_shape_still_reads():
-    # pre-migration override rows carry flat per-token attrs (Req 10.2)
+def test_legacy_per_token_override_shape_is_dropped_after_d6():
+    # D6 (06-GATEWAY-PRICING-COVERAGE): the flat per-token input/output
+    # override tolerance is DELETED — zero live rows use it and the writer
+    # never produces it. A row in the removed shape now resolves unpriced
+    # rather than being silently lifted; only the current grid contract reads.
     entry = {"override": {"input": 1.5e-05, "output": 7.5e-05}, "published": None}
+    r = resolve_rate(entry, "input")
+    assert (r.usd_per_1m, r.source) == (None, "unpriced")
+    # the current override contract (grid map + _UNIT) still reads
+    entry = {"override": {"rates": {"input": 15.0}, "_UNIT": resolver.UNIT_PER_1M},
+             "published": None}
     r = resolve_rate(entry, "input")
     assert (r.usd_per_1m, r.source) == (15.0, "override")
 

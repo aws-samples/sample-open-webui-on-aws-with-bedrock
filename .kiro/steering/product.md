@@ -16,6 +16,7 @@ This repository is an AWS deployment sample for running the **unmodified officia
 - `config/model-capabilities.json` controls which models appear in each lane so users only see compatible models.
 - Aurora PostgreSQL/pgvector, ElastiCache Redis, S3, and Secrets Manager provide application data and supporting services.
 - An optional metering stack reserves quota, captures Open WebUI usage, settles ledger and counter state, refreshes pricing, and exposes an administrative and self-service console.
+- Pricing is single-source (AWS Price List + operator overrides, in DynamoDB); a coverage join makes any gateway-invokable-but-unpriced model a named, alarmed condition rather than a silent $0, without blocking admission.
 
 ## Product constraints
 

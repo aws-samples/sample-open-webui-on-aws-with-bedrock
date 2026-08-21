@@ -46,8 +46,11 @@ import sys
 import time
 import urllib.parse
 import urllib.request
+from decimal import Decimal
 
 import boto3
+from botocore.auth import SigV4Auth  # noqa: E402
+from botocore.awsrequest import AWSRequest  # noqa: E402
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 for _p in (_HERE, os.path.join(_HERE, "..")):  # Lambda task root / repo tree
@@ -55,13 +58,22 @@ for _p in (_HERE, os.path.join(_HERE, "..")):  # Lambda task root / repo tree
         sys.path.insert(0, _p)
 
 from pricing import identity, offers  # noqa: E402
-from pricing.resolver import UNIT_PER_1M  # noqa: E402
+from pricing.resolver import UNIT_PER_1M, resolve_rate, unwrap_item  # noqa: E402
 
 log = logging.getLogger()
 log.setLevel(logging.INFO)
 
 TABLE = os.environ["TABLE"]
 REGION = os.environ.get("REGION", "us-east-1")
+# Region whose bedrock-mantle catalog the gateway fronts (may differ from the
+# offer-file/table region). Defaults to REGION when unset.
+MANTLE_REGION = os.environ.get("MANTLE_REGION") or REGION
+# Interceptor Lambda whose MODEL_CAPS env var carries the SERVED lane lists
+# (wired by CDK). Absent ⇒ metering deployed without the model refresher; the
+# coverage join then falls back to the packaged capability matrix (§8).
+INTERCEPTOR_FUNCTION_NAME = os.environ.get("INTERCEPTOR_FUNCTION_NAME", "").strip()
+# Lanes, mirroring gateway/refresher/index.py::LANES and the interceptor's CAPS.
+LANES = ("chat_completions", "responses", "messages")
 # Precedence order for first-wins leaf merges: the marketplace file publishes
 # per-1M natively and carries the modern Anthropic grid; the mantle/legacy and
 # Service files fill the remainder.
@@ -70,9 +82,14 @@ OFFER_URL = "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/{svc}/curre
 
 REASON_NO_MATCH = "no-control-plane-match"
 REASON_AMBIGUOUS = "ambiguous-match"
+# D8 unmatched-row classification (contract §4): no-match = zero control-plane
+# candidates (historical); ambiguous = >1 candidates, refused to guess (actionable).
+CLASS_NO_MATCH = "no-match"
+CLASS_AMBIGUOUS = "ambiguous"
 
 ddb = boto3.client("dynamodb")
 cw = boto3.client("cloudwatch")
+_lambda = boto3.client("lambda")
 # The bedrock client resolves auth at construction (bearer-token support), so
 # build it lazily to keep module import free of credential lookups (tests).
 _bedrock = None
@@ -168,17 +185,20 @@ def _new_entry(display: str, provider: str, via: str, service_code: str, pl_name
     }
 
 
-def _merge_rate(entry: dict, r) -> None:
-    cell = (entry["grid"].setdefault(r.routing, {})
-            .setdefault(r.tier, {}).setdefault(r.context, {}))
-    cell.setdefault(r.direction, r.usd_per_1m)  # first-wins: file order is precedence
+def _apply_meta(entry: dict, r) -> None:
+    """Carry effective_date/provider from a rate onto the resolved entry.
+
+    (The grid merge itself is delegated to the package's offers.merge_rate,
+    which owns the D7 identical→silent / conflict→MAX rule — the refresher no
+    longer reimplements cell aggregation.)"""
     if not entry["effective_date"] and r.effective_date:
         entry["effective_date"] = r.effective_date
     if not entry["provider"] and r.provider:
         entry["provider"] = r.provider
 
 
-def _resolve(parsed_by_service: dict, aliases: dict, cp_models: list) -> tuple[dict, dict]:
+def _resolve(parsed_by_service: dict, aliases: dict, cp_models: list,
+             acc: "offers.ParseAccounting | None" = None) -> tuple[dict, dict]:
     """Join parsed rates to model ids → (resolved by canonical id, unmatched by name)."""
     cp_index = identity.build_index(mid for mid, _, _ in cp_models)
     name_index = identity.build_name_index((mid, name) for mid, name, _ in cp_models)
@@ -210,9 +230,14 @@ def _resolve(parsed_by_service: dict, aliases: dict, cp_models: list) -> tuple[d
                             "provider": r.provider,
                             "service_code": svc,
                             "reason": REASON_AMBIGUOUS if hit else REASON_NO_MATCH,
+                            # D8 (contract §4): actionable if the join found >1
+                            # control-plane candidate and refused to guess.
+                            "class": CLASS_AMBIGUOUS if hit else CLASS_NO_MATCH,
                             "grid": {},
                         })
-                        _merge_rate({"grid": u["grid"], "effective_date": "", "provider": ""}, r)
+                        # Candidate rates for the review queue — no accounting
+                        # sink (conflicts on an unresolved name aren't actionable).
+                        offers.merge_rate(u["grid"], r)
                         continue
             entry = resolved.get(canonical)
             if entry is None:
@@ -222,7 +247,9 @@ def _resolve(parsed_by_service: dict, aliases: dict, cp_models: list) -> tuple[d
             if pl_name and not entry["price_list_name"]:
                 entry["price_list_name"] = pl_name
             entry["extra_ids"].update(group_ids)
-            _merge_rate(entry, r)
+            # Package-owned D7 merge (identical→silent, conflict→MAX + record).
+            offers.merge_rate(entry["grid"], r, acc, model_id=canonical)
+            _apply_meta(entry, r)
     return resolved, unmatched
 
 
@@ -256,7 +283,9 @@ def _merge_canonicals(resolved: dict) -> dict:
                     cell = (tgt["grid"].setdefault(routing, {})
                             .setdefault(tier, {}).setdefault(ctx, {}))
                     for d, v in dirs.items():
-                        cell.setdefault(d, v)
+                        # D7: keep the maximum on a same-leaf conflict (matches
+                        # offers.merge_rate); a new leaf is taken as-is.
+                        cell[d] = v if d not in cell else max(cell[d], v)
         tgt["extra_ids"].update(members)
         if not tgt["price_list_name"] and entry["price_list_name"]:
             tgt["price_list_name"] = entry["price_list_name"]
@@ -297,10 +326,14 @@ def _materialize_keys(resolved: dict) -> dict:
 # ── DynamoDB writes ──────────────────────────────────────────────────────────
 
 def _grid_to_attr(grid: dict) -> dict:
+    # offers.merge_rate stores float leaves; decimal_str needs a Decimal, so
+    # coerce via str() to preserve the published magnitude exactly.
+    def _n(v):
+        return {"N": offers.decimal_str(v if isinstance(v, Decimal) else Decimal(str(v)))}
     return {"M": {
         routing: {"M": {
             tier: {"M": {
-                ctx: {"M": {d: {"N": offers.decimal_str(v)} for d, v in dirs.items()}}
+                ctx: {"M": {d: _n(v) for d, v in dirs.items()}}
                 for ctx, dirs in ctxs.items()
             }}
             for tier, ctxs in tiers.items()
@@ -354,18 +387,49 @@ def _write_unmatched(unmatched: dict, generation: int, now: int) -> None:
             "provider": {"S": str(u.get("provider", ""))[:64]},
             "service_code": {"S": str(u.get("service_code", ""))[:64]},
             "reason": {"S": u.get("reason", REASON_NO_MATCH)},
+            # D8: no-match (historical) vs ambiguous (actionable). Defaults to
+            # no-match so a legacy row missing the field reads as historical.
+            "class": {"S": u.get("class", CLASS_NO_MATCH)},
             "candidate_rates": _grid_to_attr(u.get("grid", {})),
             "refresh_generation": {"N": str(generation)},
             "updated_at": {"N": str(now)},
         })
 
 
-def _gc(written_keys: set, current_unmatched: set, full_success: bool) -> dict:
-    """Delete rows the new pricing path can never read (design §6 step 8)."""
+def _gc(written_keys: set, current_unmatched: set, full_success: bool,
+        prior_keys: list | None, prior_unmatched: list | None) -> dict:
+    """Delete rows the new pricing path can never read (design §6 step 8).
+
+    D9: when the previous catalog meta carries its written model-key list
+    (`prior_keys`), garbage collection is a targeted diff of that list against
+    this run's `written_keys` — no full table Scan. The prior meta's model-key
+    list only ever held valid model-id PUBLISHED keys, so legacy display-token
+    keys and removed PROVIDER/DEFAULT tiers cannot appear there; the diff path
+    therefore skips them (they were already collected by an earlier Scan run,
+    and a fresh install with meta present has none). The legacy full Scan runs
+    only when the prior meta is absent (first refresh after upgrade).
+    """
     stats = {"legacy_key": 0, "provider_default": 0, "stale": 0, "stale_unmatched": 0}
     if not written_keys:  # defensive: an empty run must never trigger deletion
         log.warning("no keys written this run; skipping garbage collection")
         return stats
+
+    if prior_keys is not None:
+        # Targeted diff (D9): only prior model-id keys absent from this run.
+        if full_success:
+            for key in prior_keys:
+                if key not in written_keys and identity.MODEL_ID_RE.match(key):
+                    ddb.delete_item(TableName=TABLE,
+                                    Key={"pk": {"S": f"PRICING#{key}"}, "sk": {"S": "PUBLISHED"}})
+                    stats["stale"] += 1
+            for name in (prior_unmatched or []):
+                if name not in current_unmatched:
+                    ddb.delete_item(TableName=TABLE,
+                                    Key={"pk": {"S": "PRICING#_UNMATCHED"}, "sk": {"S": str(name)}})
+                    stats["stale_unmatched"] += 1
+        return stats
+
+    # Legacy full Scan (prior meta absent — first refresh after upgrade).
     items, lek = [], None
     while True:
         kwargs = {
@@ -404,29 +468,295 @@ def _gc(written_keys: set, current_unmatched: set, full_success: bool) -> dict:
     return stats
 
 
-def _read_generation() -> int:
+def _read_prior_meta() -> tuple[int, list | None, list | None]:
+    """Return (generation, prior model-key list | None, prior unmatched list | None).
+
+    The model-key / unmatched lists power the D9 targeted GC. `None` means the
+    prior meta predates D9 (no `model_keys`) — GC falls back to a full Scan.
+    """
     try:
         item = ddb.get_item(
             TableName=TABLE,
             Key={"pk": {"S": "PRICING#_CATALOG"}, "sk": {"S": "META"}},
         ).get("Item") or {}
-        return int(item.get("refresh_generation", {}).get("N", "0"))
     except Exception:  # noqa: BLE001
-        return 0
+        return 0, None, None
+    gen = int(item.get("refresh_generation", {}).get("N", "0"))
+    keys = item.get("model_keys")
+    prior_keys = [k.get("S", "") for k in keys["L"]] if keys and "L" in keys else None
+    un = item.get("unmatched_names")
+    prior_unmatched = [k.get("S", "") for k in un["L"]] if un and "L" in un else None
+    return gen, prior_keys, prior_unmatched
+
+
+# ── D1/D2 gateway↔pricing coverage join (contract §2, §8) ─────────────────────
+
+def _mantle_catalog() -> list:
+    """Available model ids from the gateway's bedrock-mantle catalog.
+
+    Mirrors gateway/refresher/probe_core.fetch_catalog(): a SigV4 GET (signing
+    service "bedrock") against the mantle /v1/models endpoint, keeping only
+    status=="available". Not imported from gateway/ — that tree is not staged
+    into the metering Lambda — so the minimal equivalent is inlined here with
+    credit to probe_core as the pattern source. Signs via botocore (already a
+    boto3 dependency) and sends over urllib, so no `requests` vendoring is
+    needed in this Lambda's asset.
+    """
+    creds = boto3.Session().get_credentials().get_frozen_credentials()
+    url = f"https://bedrock-mantle.{MANTLE_REGION}.api.aws/v1/models"
+    req = AWSRequest(method="GET", url=url)
+    SigV4Auth(creds, "bedrock", MANTLE_REGION).add_auth(req)
+    request = urllib.request.Request(url, headers=dict(req.headers), method="GET")
+    with _urlopen_https(request, timeout=30) as r:
+        data = json.loads(r.read())
+    return [m["id"] for m in data.get("data", [])
+            if m.get("status", "available") == "available"]
+
+
+def _bundled_caps() -> dict:
+    """Capability matrix packaged beside the handler (config/model-capabilities.json).
+
+    This is the SAME source of truth the interceptor falls back to when its
+    MODEL_CAPS env var is unset (gateway/metering-interceptor reads
+    os.environ["MODEL_CAPS"] else _bundled("model-capabilities.json")). Staged
+    into this Lambda's asset by CDK; resolvable in the task root or repo tree.
+    """
+    for cand in (
+        os.path.join(_HERE, "model-capabilities.json"),
+        os.path.join(_HERE, "..", "..", "config", "model-capabilities.json"),
+    ):
+        try:
+            with open(cand) as f:
+                return json.load(f)
+        except (OSError, ValueError):
+            continue
+    return {}
+
+
+def _served_caps() -> dict:
+    """The SERVED lane→[model ids] map (contract §8).
+
+    Primary: read the interceptor Lambda's MODEL_CAPS env var via
+    lambda:GetFunctionConfiguration (same parse as
+    gateway/refresher/index.py::_current_caps). Fallback (env var unset ⇒
+    metering deployed without the model refresher): the packaged capability
+    matrix the interceptor itself falls back to. Coverage must work in BOTH
+    enableModelRefresh states, so any failure degrades to the bundled file.
+    """
+    if INTERCEPTOR_FUNCTION_NAME:
+        try:
+            cfg = _lambda.get_function_configuration(FunctionName=INTERCEPTOR_FUNCTION_NAME)
+            raw = (cfg.get("Environment", {}).get("Variables", {}) or {}).get("MODEL_CAPS")
+            if raw:
+                return json.loads(raw)
+            log.info("interceptor MODEL_CAPS env unset; using packaged capability matrix")
+        except Exception as e:  # noqa: BLE001 — coverage must not fail the refresh
+            log.warning(f"served MODEL_CAPS read failed ({e}); using packaged matrix")
+    return _bundled_caps()
+
+
+def _lanes_by_model(caps: dict) -> dict:
+    """Invert {lane: [ids]} → {model_id: sorted[lanes]} over the known lanes."""
+    out: dict = {}
+    for lane in LANES:
+        for mid in caps.get(lane, []) or []:
+            out.setdefault(mid, set()).add(lane)
+    return {mid: sorted(lanes) for mid, lanes in out.items()}
+
+
+def _override_rows(universe_keys: set) -> dict:
+    """OVERRIDE rows for the coverage universe, keyed by catalog key.
+
+    One BatchGetItem round (universe is ~60 models; chunked at the 100-key
+    API limit). Operator overrides are owned by the admin API — the coverage
+    join only READS them, so a publishing-gap model priced by override counts
+    as priced (live 2026-08-21 finding: coverage reported the 7 overridden
+    openai.* models unpriced because this read was missing).
+    """
+    keys = [{"pk": {"S": f"PRICING#{k}"}, "sk": {"S": "OVERRIDE"}}
+            for k in sorted(universe_keys)]
+    out: dict = {}
+    for i in range(0, len(keys), 100):
+        chunk = keys[i:i + 100]
+        try:
+            resp = ddb.batch_get_item(RequestItems={TABLE: {"Keys": chunk}})
+        except Exception as e:  # noqa: BLE001 — coverage degrades, never raises
+            log.warning(f"override batch read failed: {e}")
+            continue
+        for it in resp.get("Responses", {}).get(TABLE, []):
+            pk = it.get("pk", {}).get("S", "")
+            out[pk.removeprefix("PRICING#")] = it
+        # single retry for unprocessed keys; a miss degrades to unpriced=alarm
+        unproc = resp.get("UnprocessedKeys", {}).get(TABLE, {}).get("Keys")
+        if unproc:
+            try:
+                resp2 = ddb.batch_get_item(RequestItems={TABLE: {"Keys": unproc}})
+                for it in resp2.get("Responses", {}).get(TABLE, []):
+                    pk = it.get("pk", {}).get("S", "")
+                    out[pk.removeprefix("PRICING#")] = it
+            except Exception:  # noqa: BLE001
+                pass
+    return out
+
+
+def _priced(resolved: dict, keys_by_canonical: dict, model_key: str,
+            override_row: dict | None = None) -> tuple[bool, str | None]:
+    """(priced, source) for a catalog key via the production resolver.
+
+    Priced ⇔ the resolver returns a non-null input AND output rate from the
+    SAME entry shape the settle path uses: operator OVERRIDE outranks the
+    published grid. `source` is the winning label
+    (override|aws-published|None).
+    """
+    canonical = None
+    for c, keys in keys_by_canonical.items():
+        if model_key == c or model_key in keys:
+            canonical = c
+            break
+    entry_row = resolved.get(canonical) if canonical else None
+    published = ({"rates": entry_row["grid"], "_UNIT": UNIT_PER_1M}
+                 if entry_row and entry_row.get("grid") else None)
+    override = unwrap_item(override_row) if override_row else None
+    if not published and not override:
+        return False, None
+    entry = {"override": override, "published": published}
+    rin = resolve_rate(entry, "input")
+    rout = resolve_rate(entry, "output")
+    if rin.usd_per_1m is not None and rout.usd_per_1m is not None:
+        # the resolver names the winning side (override outranks published)
+        return True, ("override" if "override" in (rin.source, rout.source)
+                      else "aws-published")
+    if rin.usd_per_1m is not None or rout.usd_per_1m is not None:
+        partial = rin if rin.usd_per_1m is not None else rout
+        return False, partial.source if partial.source != "unpriced" else None
+    return False, None
+
+
+def _build_coverage(resolved: dict, keys_by_canonical: dict, caps: dict,
+                    catalog_ids: set, catalog_error: str | None,
+                    cp_models: list | None = None) -> dict:
+    """Coverage item (contract §2): per-model listed/available/priced + counts.
+
+    Universe = union(served MODEL_CAPS models, catalog-available models). The
+    resolver prices each via its exact catalog key (parse_model_ref strips any
+    routing scope). reason: ok | no-pricing-row | null-rates | stale-caps.
+
+    control_plane (third evidence plane, 2026-08-21): whether the id resolves
+    in bedrock ListFoundationModels via the same EXACT alias expansion the
+    pricing join uses. The serving plane can keep executing a model AWS has
+    publicly retired (live case: zai.glm-4.6 — delisted from docs, pricing
+    site, and the control plane, yet /v1/models says available and a real
+    invoke returns 200). cp-absence alone is NOT a retirement verdict — some
+    current mantle models (gpt-5.4/5.5) are also cp-absent — so this is a
+    recorded signal for the operator, never an auto-action.
+    """
+    lanes_by_model = _lanes_by_model(caps)
+    listed_ids = set(lanes_by_model)
+    universe = sorted(listed_ids | catalog_ids)
+    overrides = _override_rows({identity.parse_model_ref(m).key for m in universe})
+    cp_index = identity.build_index(mid for mid, _, _ in (cp_models or []))
+
+    models = []
+    counts = {"invokable": 0, "invokable_priced": 0, "invokable_unpriced": 0,
+              "listed_not_available": 0}
+    for mid in universe:
+        key = identity.parse_model_ref(mid).key
+        listed = mid in listed_ids
+        available = mid in catalog_ids
+        # tri-state: True/False only when a cp list was available this run;
+        # None = unknown (cp fetch absent) — unknown must never read as retired
+        in_cp = (bool(cp_index.get(key)) if cp_models else None)
+        priced, source = _priced(resolved, keys_by_canonical, key,
+                                 override_row=overrides.get(key))
+        if source == "override":
+            source = "OVERRIDE"  # contract §2 spelling
+        if listed and not available:
+            reason = "stale-caps"
+        elif priced:
+            reason = "ok"
+        elif source == "aws-published":
+            reason = "null-rates"
+        else:
+            reason = "no-pricing-row"
+        models.append({
+            "id": mid, "lanes": lanes_by_model.get(mid, []),
+            "listed": listed, "catalog_available": available,
+            "control_plane": in_cp,
+            "priced": priced, "source": source, "reason": reason,
+        })
+        if available:
+            counts["invokable"] += 1
+            counts["invokable_priced" if priced else "invokable_unpriced"] += 1
+        elif listed:
+            counts["listed_not_available"] += 1
+    counts["invokable_not_in_control_plane"] = sum(
+        1 for m in models
+        if m["catalog_available"] and m["control_plane"] is False)
+    return {"counts": counts, "models": models, "catalog_error": catalog_error}
+
+
+def _coverage_attr(models: list) -> dict:
+    return {"L": [{"M": {
+        "id": {"S": str(m["id"])[:256]},
+        "lanes": {"L": [{"S": ln} for ln in m["lanes"]]},
+        "listed": {"BOOL": m["listed"]},
+        "catalog_available": {"BOOL": m["catalog_available"]},
+        "control_plane": ({"BOOL": m["control_plane"]}
+                          if isinstance(m.get("control_plane"), bool)
+                          else {"NULL": True}),
+        "priced": {"BOOL": m["priced"]},
+        "source": ({"S": m["source"]} if m["source"] else {"NULL": True}),
+        "reason": {"S": m["reason"]},
+    }} for m in models]}
+
+
+def _write_coverage(coverage: dict, generation: int, now: int, region: str) -> None:
+    counts = coverage["counts"]
+    item = {
+        "pk": {"S": "PRICING#_COVERAGE"},
+        "sk": {"S": "META"},
+        "computed_at": {"N": str(now)},
+        "refresh_generation": {"N": str(generation)},
+        "region": {"S": region},
+        "counts": {"M": {k: {"N": str(v)} for k, v in counts.items()}},
+        "models": _coverage_attr(coverage["models"]),
+    }
+    if coverage.get("catalog_error"):
+        item["error"] = {"S": str(coverage["catalog_error"])[:256]}
+    ddb.put_item(TableName=TABLE, Item=item)
+
+
+def _emit_coverage_metrics(coverage: dict, unmatched: dict, rate_conflicts: int,
+                           unclassified: int) -> None:
+    """Contract §3 gauges, emitted every run (so alarms clear when clean)."""
+    _metric("UnpricedGatewayModels", coverage["counts"]["invokable_unpriced"])
+    actionable = sum(1 for u in unmatched.values() if u.get("class") == CLASS_AMBIGUOUS)
+    _metric("PricingUnmatchedActionable", actionable)
+    _metric("PricingDimensionUnclassified", unclassified)
+    _metric("PricingRateConflict", rate_conflicts)
+    # Heartbeat for PricingCoverageStaleAlarm: the value gauges above use
+    # NOT_BREACHING (value alarms), so a refresher that silently stops running
+    # would otherwise read healthy forever. This datapoint's ABSENCE is the
+    # staleness signal (adversarial review MAJOR-1).
+    _metric("PricingCoverageComputed", 1)
 
 
 def handler(event, context):
     started = time.time()
     try:
-        generation = _read_generation() + 1
+        prior_gen, prior_keys, prior_unmatched = _read_prior_meta()
+        generation = prior_gen + 1
         now = int(started)
         aliases = _load_aliases()
 
         parsed_by_service, versions, failed = {}, {}, []
+        # Package-owned classification + merge accounting (contract §1 / D5, D7):
+        # excluded / unclassified across parse, rate_conflicts across merge.
+        acc = offers.ParseAccounting()
         for svc in SERVICES:
             try:
                 offer = _fetch_offer(svc)
-                parsed_by_service[svc], versions[svc] = offers.parse_offer(offer, REGION, svc)
+                parsed_by_service[svc], versions[svc] = offers.parse_offer(offer, REGION, svc, acc)
             except Exception as e:  # noqa: BLE001 — one file must not sink the rest (Req 4.6)
                 log.warning(f"{svc} offer file unavailable: {e}")
                 failed.append(svc)
@@ -434,13 +764,26 @@ def handler(event, context):
             raise RuntimeError("all offer files unavailable")
 
         cp_models = _list_cp_models()
-        resolved, unmatched = _resolve(parsed_by_service, aliases, cp_models)
+        resolved, unmatched = _resolve(parsed_by_service, aliases, cp_models, acc)
         resolved = _merge_canonicals(resolved)
         keys_by_canonical = _materialize_keys(resolved)
 
         written_keys = _write_published(resolved, keys_by_canonical, versions, generation, now)
         _write_unmatched(unmatched, generation, now)
-        gc_stats = _gc(written_keys, set(unmatched.keys()), full_success=not failed)
+        gc_stats = _gc(written_keys, set(unmatched.keys()), full_success=not failed,
+                       prior_keys=prior_keys, prior_unmatched=prior_unmatched)
+
+        # ── D1/D2 coverage join (must never fail the whole refresh) ──────────
+        catalog_ids, catalog_error = set(), None
+        try:
+            catalog_ids = set(_mantle_catalog())
+        except Exception as e:  # noqa: BLE001 — partial coverage from what is known (§8)
+            catalog_error = f"{e.__class__.__name__}: {e}"
+            log.warning(f"mantle catalog fetch failed; recording partial coverage: {catalog_error}")
+        caps = _served_caps()
+        coverage = _build_coverage(resolved, keys_by_canonical, caps, catalog_ids,
+                                   catalog_error, cp_models=cp_models)
+        _write_coverage(coverage, generation, now, REGION)
 
         partial = bool(failed)
         duration_ms = int((time.time() - started) * 1000)
@@ -458,10 +801,19 @@ def handler(event, context):
             "duration_ms": {"N": str(duration_ms)},
             "partial": {"BOOL": partial},
             "failed_services": {"L": [{"S": s} for s in failed]},
+            # Classification/merge accounting counts (contract §1 / D5, D7).
+            "excluded_count": {"N": str(len(acc.excluded))},
+            "unclassified_count": {"N": str(len(acc.unclassified))},
+            "rate_conflict_count": {"N": str(len(acc.rate_conflicts))},
+            # D9: the written model-key + unmatched lists power the next run's
+            # targeted GC (diff instead of a full table Scan).
+            "model_keys": {"L": [{"S": k} for k in sorted(written_keys)]},
+            "unmatched_names": {"L": [{"S": str(n)[:512]} for n in sorted(unmatched)]},
         })
 
         _metric("PricingRefreshModels", len(resolved))
         _metric("PricingUnmatched", len(unmatched))
+        _emit_coverage_metrics(coverage, unmatched, len(acc.rate_conflicts), len(acc.unclassified))
         if partial:
             # rates stay intact (GC skipped stale deletion), but the operator
             # must see that a source went dark (Req 4.4/4.6)
@@ -472,6 +824,9 @@ def handler(event, context):
             "unmatched": len(unmatched), "aliases": len(aliases),
             "versions": versions, "failed_services": failed,
             "gc": gc_stats, "duration_ms": duration_ms,
+            "coverage": coverage["counts"], "coverage_error": catalog_error,
+            "excluded": len(acc.excluded), "unclassified": len(acc.unclassified),
+            "rate_conflicts": len(acc.rate_conflicts),
         }
         log.info(json.dumps(summary))
         return summary

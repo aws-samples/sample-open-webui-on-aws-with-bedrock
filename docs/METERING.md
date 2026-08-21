@@ -92,8 +92,9 @@ soft-warn **$4** (toast in the UI), **30 requests/min**, max-tokens clamp **8192
 - **CloudWatch dashboard** `open-webui-metering` — spend rate, denies,
   degraded checks, sweeper refunds, canary status, reconciliation drift.
 - **SNS topic** (output `MeteringAlertsTopicArn`) — subscribe for: user at
-  80%/100% of quota, DLQ depth, unpriced-model, canary failures, drift >5%
-  (or manage subscriptions from the console's Module health page).
+  80%/100% of quota, DLQ depth, the pricing/coverage alarm set (see the pricing
+  runbook below), canary failures, reconciliation drift >5% (or manage
+  subscriptions from the console's Module health page).
 
 **Upgrading a pre-console metering deployment:** DynamoDB allows one GSI
 creation per stack update and the console adds two. Deploy once with
@@ -136,20 +137,51 @@ front. Notes:
   standard) sets `rate_fallback`. Each settled row records `price_source` and
   the supplying row's offer version in `price_map_version`. Design:
   [`.kiro/specs/metering-pricing-single-source/design.md`](../.kiro/specs/metering-pricing-single-source/design.md).
+- **Gateway↔pricing coverage join** (`PRICING#_COVERAGE`, console **Model
+  pricing** coverage strip + `GET /pricing/coverage`): at the end of every
+  refresh, the refresher joins what the gateway actually serves (the live
+  catalog + the interceptor's `MODEL_CAPS`) against what the catalog prices, and
+  writes one coverage item — per-model `{listed, catalog_available, priced,
+  source, reason}` plus counts. This turns "a model is invokable but has no
+  price" from a silent gap into a **named, alarmed** condition
+  (`UnpricedGatewayModels`). Pre-override baseline (2026-08-20/21, us-east-1,
+  refresh generation 20): chat 41/46 priced, responses 6/13 priced, messages 5/5
+  priced; 8 distinct invokable-unpriced models, all the GPT-5.x/GLM mantle
+  publishing-gap family. **Live-verified 2026-08-21 (refresh generation 24)**,
+  after the 7 model-card-provenance operator overrides: invokable 54 / priced 53 /
+  `invokable_unpriced == [zai.glm-4.6]` — the one model with no AWS-published
+  rate anywhere (publicly retired but still serving). Per the operator policy
+  decided 2026-08-21 it stays available and flagged; an optional manual
+  override (documented in its `note`) is the resolution path if chosen.
 - **Unmatched Price List entries** (`PRICING#_UNMATCHED`, console Unmatched
-  queue, `PricingUnmatched` alarm): AWS publishes a token rate but no model id
-  could be resolved without guessing (legacy display names, retired models,
-  naming drift). Bind the name to a model id in the console (audited,
-  `PRICING#_ALIAS`) and refresh — bindings outrank automatic matching.
+  queue): AWS publishes a token rate but no model id could be resolved without
+  guessing. These are classified by `reason` and split for alerting:
+  - `no-control-plane-match` = **historical**: a legacy display name with no
+    current control-plane twin (retired/marketing names — Claude 2.x-era). Kept
+    and counted, collapsed by default in the console, but **not** alarmed — it is
+    expected residue, not a work item. Baseline measured 2026-08-20/21: **49
+    entries, all `no-control-plane-match`**.
+  - `ambiguous-match` = **actionable**: the refresher found more than one
+    candidate twin and refused to guess. This is what the `PricingUnmatchedActionable`
+    alarm tracks (fires at ≥ 1). Resolve it by binding the name to a model id in
+    the console (audited, `PRICING#_ALIAS`) and refreshing — bindings outrank
+    automatic matching. Because today's 49 are all `no-control-plane-match`, the
+    alarm is *expected* to read OK after this change deploys (a live validation
+    signal); the parent records the post-deploy state.
 - **Unpriced models** (no AWS-published rate and no override): usage is
-  recorded in tokens, priced at $0, and the `UnpricedModel` alarm fires. Set
-  an operator override in the console's Model pricing page (USD per 1M
-  tokens) to bring them under dollar quotas — never a silent guess. Settled
-  ledger rows for unpriced models carry `unpriced: true` plus `usd_estimate`
-  (the interceptor's admission-estimate dollars) so the console shows
-  "~$X est." rather than a bare `$0` — a call that cost money reads as
-  cost-unknown, not free. The `usd_estimate` is display-only and is never
-  summed into the enforced counter (`used_usd`).
+  recorded in tokens, priced at $0, and the model surfaces three ways —
+  proactively as `UnpricedGatewayModels` (the coverage join names it even before
+  anyone calls it), and reactively as `UnpricedModel` (a settle-path invocation
+  of an unpriced model) and `UnpricedAdmission` (the admission estimate resolved
+  no rate). Set an operator override in the console's Model pricing page (USD
+  per 1M tokens) to bring them under dollar quotas — never a silent guess.
+  Settled ledger rows for unpriced models carry `unpriced: true` plus
+  `usd_estimate` (the interceptor's admission-estimate dollars) so the console
+  shows "~$X est." rather than a bare `$0` — a call that cost money reads as
+  cost-unknown, not free. The `usd_estimate` is display-only and is never summed
+  into the enforced counter (`used_usd`). **Admission is not blocked** for an
+  unpriced model — the availability-first posture is preserved; the model just
+  becomes visible and, once overridden, priced.
 - **Call `lane`** (chat/completions · responses · messages) on a *settled*
   ledger row is filled from the matched admission estimate (the gateway
   interceptor observed the actual lane); the seeded filter also emits its
@@ -163,6 +195,62 @@ front. Notes:
 - The reconciler intentionally queries **all** services (not just
   `Amazon Bedrock`) because Claude-on-Bedrock can invoice under the Anthropic
   marketplace entity.
+
+## Pricing & coverage alarms — what each means and what to do
+
+All are namespace `Metering`, alarm names prefixed with the deployment's env
+prefix (default `open-webui-metering-…`), routed to the alerts SNS topic and the
+console Module health page. Baselines are the 2026-08-20/21 measurement (refresh
+generation 20); post-deploy states are *expected* until the parent records live
+values.
+
+| Alarm (`metricName`) | Fires when | Baseline | What to do |
+|---|---|---|---|
+| `UnpricedGatewayModels` | a model the gateway serves is invokable but has no resolvable rate (coverage join, ≥ 1) | 1 (`zai.glm-4.6`) — live-verified 2026-08-21 after the 7 GPT-5.x operator overrides; the pre-override baseline was 8 | **Operator policy (decided 2026-08-21): every actually-invokable gateway model stays available.** This alarm is the flag, not a removal trigger. To resolve: set a manual override (any operator-chosen rate; the `note` field records the provenance or business rationale) — or accept the flag and leave it unpriced ($0-metered) deliberately. |
+| `UnpricedModel` | an unpriced model was actually **settled** (reactive) | OK | Same fix as above; this fires only on live traffic to an unpriced model. |
+| `UnpricedAdmission` | the admission estimate resolved no rate for a request | — | Same underlying gap; confirms an unpriced model is being called, not just listed. |
+| `PricingUnmatchedActionable` | an **ambiguous** Price List name (>1 candidate twin) is queued (≥ 1) | OK (all 49 unmatched are historical `no-control-plane-match`) | Open the console Unmatched queue, bind the ambiguous name to the correct model id (audited `PRICING#_ALIAS`), refresh. |
+| `PricingDimensionUnclassified` | the parser saw a token usage type it could neither classify nor match to the exclusion list (≥ 1) | 0 — live-verified 2026-08-21 (79 named exclusions: 62 non-text-modality + 17 custom-model/APO) | Inspect the `unclassified` list on `GET /pricing` / refresh meta; a new AWS usage-type shape needs a parser update — file it, don't hand-edit rows. |
+| `PricingRateConflict` | two SKUs gave conflicting rates for the same model+leaf (kept the max, recorded the conflict) | 0 | Review the `rate_conflicts` entries on the refresh meta; usually a transient AWS publishing overlap — confirm the kept (max) rate is acceptable. |
+| `PricingRefreshFailure` | a refresh run failed | OK | Old rates are retained (Req 4.4); check the refresher logs. A partial fetch (one offer file down) does **not** delete that file's rows. |
+| — `control_plane` (coverage field, no alarm) | an **invokable** model is absent from bedrock `ListFoundationModels` (`invokable_not_in_control_plane` count; console badge "no control-plane entry") | 3 — `zai.glm-4.6` (publicly retired yet still serving: real invoke returns 200) plus `openai.gpt-5.4`/`gpt-5.5` (current models that are legitimately cp-absent) | A recorded signal, **never** an auto-action — cp-absent alone proves nothing (16/54 live models are cp-absent, incl. current priced ones like gpt-5.4/5.5). Its value: unpriced **and** cp-absent **and** publicly delisted means AWS will never publish a rate, so waiting is pointless — if you want the flag cleared, a manual override (business-decision rate, documented in `note`) is the only path. Availability itself is never touched. |
+| `PricingCoverageComputed` (stale alarm) | **no** coverage computation datapoint for 2 daily periods — the refresher is not running at all, or dies before the coverage join | OK | The value alarms above stay quiet on missing data, so this heartbeat's *absence* is the signal. Check the EventBridge schedule and the refresher function; trigger a manual refresh (`POST /pricing/refresh`) and confirm the alarm clears. |
+
+`PricingRoutingFallback` / `PricingTierFallback` are emitted (not alarmed) when a
+request is priced from a substitute routing mode or tier; they surface on ledger
+rows as `rate_fallback` for audit.
+
+## Publishing-gap override runbook
+
+When `UnpricedGatewayModels` names a model AWS serves but has not put in the
+Price List bulk offer files (the GPT-5.x mantle family is the current example):
+
+1. **Diagnose** — `scripts/diagnose-model-pricing.py --model <id>` runs the
+   production parser + identity join + resolver against the live offer files and
+   prints, per model, the SKUs found (or `0 hits`), the join outcome, and the
+   named unpriced reason. `0 hits` in all three files = an AWS **publishing gap**,
+   not a parser/join defect (the tool's own positive control is the priced
+   `openai.gpt-oss-*` family).
+2. **Find the rate from an AWS source only** — Bedrock **model-card doc pages**
+   publish rates that are absent from the bulk API (e.g.
+   `docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-sol.html`).
+   Use the us-east-1 **In-Region**, Standard tier, short-context row. If AWS
+   publishes no rate anywhere (as with `zai.glm-4.6`), **stop** — overriding it
+   would invent a number; escalate as a lane-removal decision instead.
+3. **Override with provenance** — in the console Model pricing page (or
+   `PUT /pricing/{model}`), enter the per-1M input/output (and cache axes where
+   published) and record the source page in the override `note`. Dated snapshot
+   ids (`…-2026-03-05`) get their **own** override citing the base model-card —
+   AWS publishes no per-snapshot rate, so no alias guessing.
+4. **Gate before deploy** — `scripts/pricing-rate-diff.py` compares the effective
+   per-model, per-leaf rates between two snapshots (live table vs about-to-ship
+   compute, or two dumps). A clean run — or only the intended override additions —
+   is the go signal. A rate *diff*, not a gap *count*, is what catches a matcher
+   that "improved coverage" by matching less exactly.
+
+Both scripts are Python-stdlib-only, read-only, and run the **production**
+`metering/pricing` code — so "why is this model unpriced?" and "did any rate
+move?" are each one command.
 
 ## Failure posture (chosen defaults, and the valves)
 

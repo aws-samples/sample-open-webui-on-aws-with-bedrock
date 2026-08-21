@@ -119,6 +119,7 @@ if (meteringEnabled) {
     canaryClient: gatewayStack.canaryClient!,
     gatewayId: gatewayStack.gatewayId,
     gatewayInferenceUrl: gatewayStack.gatewayInferenceUrl,
+    interceptorFunction: gatewayStack.meteringInterceptorFn,
     userPoolDomainName: `${cognitoDomainPrefix}.auth.${env.region}.amazoncognito.com`,
     environmentPrefix: envConfig?.environment,
   });

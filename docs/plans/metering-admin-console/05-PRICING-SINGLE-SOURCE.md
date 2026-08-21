@@ -255,3 +255,49 @@ per 1M) — announce it, because chargeback reports will move.
 3. **Reserved capacity.** `AmazonBedrockService` reserved-throughput commitments
    are not per-token and are out of scope for the settle path. Keep them in the
    CSV export only.
+
+---
+
+## Addendum — 2026-08-20/21 re-measurement (does not rewrite the above)
+
+The coverage and dimension figures in §2.1 above were the analysis-time floor.
+They were re-measured live on 2026-08-20/21 against account `511884928131`,
+us-east-1, table `open-webui-metering` (refresh generation 20), and against the
+three live Bedrock offer files. This addendum records the current numbers; the
+original figures are kept above as the reasoning that led here. The coverage
+join that produced these is designed in
+[`06-GATEWAY-PRICING-COVERAGE.md`](06-GATEWAY-PRICING-COVERAGE.md).
+
+**Coverage is now per-lane, not a single "28/47 (60%)".** The gateway serves
+three lanes; measured priced/unpriced by lane (served `MODEL_CAPS` LEFT JOIN the
+priced catalog):
+
+| Lane | Total | Priced | Unpriced |
+|---|---|---|---|
+| chat_completions | 46 | 41 | 5 |
+| responses | 13 | 6 | 7 |
+| messages | 5 | 5 | 0 |
+
+The "60% (28/47)" floor no longer holds — coverage is high and lane-dependent.
+
+**Exactly 8 models remain unpriced, and the set is not the one §2.1/`02` named.**
+Every one is `row-absent` (no `PRICING#<id>` row at all) because it has **no SKU
+in any of the three live offer files**, verified per model:
+`openai.gpt-5.4`, `openai.gpt-5.4-2026-03-05`, `openai.gpt-5.5`,
+`openai.gpt-5.5-2026-04-23`, `openai.gpt-5.6-luna`, `openai.gpt-5.6-sol`,
+`openai.gpt-5.6-terra`, `zai.glm-4.6`. This is the GPT-5.x/GLM **mantle
+publishing-gap family** — an AWS publishing gap, not a parser or join defect.
+The search is sound, not a weak grep: the positive control `openai.gpt-oss-*`
+matched **16 SKUs each** in the same files. The count "8" coincidentally equals
+the earlier claim, but the *members* differ — the frontier Claude ids that `02`
+called unpublished are now priced from `AmazonBedrockFoundationModels`. 7 of the
+8 have AWS rates on Bedrock model-card doc pages (operator-override path);
+`zai.glm-4.6` has no AWS-published rate anywhere and is refused an invented rate
+(escalated as a lane-removal recommendation).
+
+**The "238 token-priced dimensions" figure in §1 is stale.** Live counts:
+`AmazonBedrockFoundationModels` **241**, `AmazonBedrock` **857**,
+`AmazonBedrockService` **15** = **1113** token-priced dimensions across the three
+files (the parser classifies 1096; the 17 unclassified are all intentional
+exclusions — 16 Nova `custom-model`, 1 APO `optimizePrompt`). `AmazonBedrockFoundationModels`
+alone carries 241, already more than the old "238" for all files combined.

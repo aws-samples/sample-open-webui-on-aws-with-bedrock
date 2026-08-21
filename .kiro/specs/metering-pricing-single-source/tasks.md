@@ -51,8 +51,10 @@ cd infra && npx tsc --noEmit && npx cdk synth --quiet
 
 - [x] 3. Implement safe alias expansion and name normalization in `identity.py`
 - [x] 3.1 Implement `id_aliases` stripping only `:N[:tag]`, `-vN`, `-YYYYMMDD`, and
-  a trailing `-N` **only when preceded by a letter**.
-  - _Requirements: 2.5_
+  a trailing `-N` **only when preceded by a digit+letter size token** (e.g.
+  `…-120b-1` strips; `…-sonnet-5` does not — the tightened guard that keeps
+  `claude-sonnet-5` and `claude-opus-4-7` from collapsing, per design §4.3).
+  - _Requirements: 2.5, 2.6_
 - [x] 3.2 Implement `normalize_name` (lowercase, drop parenthesised qualifiers,
   remove `instruct`/`it`/`pt`/`bf16`/`vl`/`dense`, strip non-alphanumerics), applied
   only to name-to-name comparisons, never to a model id.
@@ -245,3 +247,29 @@ cd infra && npx tsc --noEmit && npx cdk synth --quiet
 - [x] 12.5 Note in `scripts/fetch-bedrock-pricing.py` that it is an operator/audit
   export and not on the runtime pricing path.
   - _Requirements: 8.1_
+
+- [x] 13. Gateway-to-pricing coverage join and pricing observability
+  Implemented under the gateway-pricing-coverage design
+  ([`docs/plans/metering-admin-console/06-GATEWAY-PRICING-COVERAGE.md`](../../../docs/plans/metering-admin-console/06-GATEWAY-PRICING-COVERAGE.md)),
+  which extends this spec. Tasks recorded here so the new requirements trace to code.
+- [x] 13.1 At the end of the refresh, join served `MODEL_CAPS` + the live gateway
+  catalog against the resolved catalog and write `PRICING#_COVERAGE/META` with
+  per-model `{listed, catalog_available, priced, source, reason}` and counts;
+  record a partial result (never fail the refresh) if the catalog fetch fails.
+  - _Requirements: 13.1, 13.2, 13.3, 13.5_
+- [x] 13.2 Emit `UnpricedGatewayModels` and add its alarm; keep admission
+  unblocked for invokable-unpriced models.
+  - _Requirements: 13.4, 13.6_
+- [x] 13.3 Record unclassifiable token dimensions in an `unclassified` set and emit
+  `PricingDimensionUnclassified`; match named exclusions separately.
+  - _Requirements: 14.1, 14.2_
+- [x] 13.4 Replace first-wins merge with max+signal (`rate_conflicts`), emit
+  `PricingRateConflict`; make the merge order-independent.
+  - _Requirements: 14.3_
+- [x] 13.5 Classify `_UNMATCHED` by reason and rewire the alarm to
+  `PricingUnmatchedActionable` (ambiguous only, not historical no-match).
+  - _Requirements: 14.4_
+- [x] 13.6 Emit `UnpricedAdmission` on the admission path so proactive coverage
+  and reactive settle/admission signals are distinguishable; expose
+  `GET /pricing/coverage`.
+  - _Requirements: 14.5, 13.3_

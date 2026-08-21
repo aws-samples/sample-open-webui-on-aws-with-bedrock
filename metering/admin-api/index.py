@@ -744,10 +744,32 @@ def _unsubscribe_alerts(arn: str, actor: str) -> dict:
 _MAX_OVERRIDE_PER_1M = 1e6
 
 
-def _pricing_rows() -> list:
-    """All PRICING# rows; the estimates GSI would miss them (no state attr);
-    query the pk space directly with a Scan bounded to PRICING# — the catalog is
-    a few hundred rows, not the ledger, so this is cheap and paginated defensively."""
+def _read_coverage_item() -> dict | None:
+    """The PRICING#_COVERAGE/META item as plain Python, or None if absent."""
+    try:
+        item = ddb.get_item(
+            TableName=TABLE, Key={"pk": {"S": "PRICING#_COVERAGE"}, "sk": {"S": "META"}},
+        ).get("Item")
+    except Exception as e:  # noqa: BLE001
+        log.warning(f"coverage read failed: {e}")
+        return None
+    return unwrap_item(item) if item else None
+
+
+def _catalog_meta_item() -> dict | None:
+    """The PRICING#_CATALOG/META item as plain Python, or None if absent."""
+    try:
+        item = ddb.get_item(
+            TableName=TABLE, Key={"pk": {"S": "PRICING#_CATALOG"}, "sk": {"S": "META"}},
+        ).get("Item")
+    except Exception as e:  # noqa: BLE001
+        log.warning(f"catalog meta read failed: {e}")
+        return None
+    return unwrap_item(item) if item else None
+
+
+def _scan_pricing_rows() -> list:
+    """Legacy full Scan of the PRICING# key space (fallback only, D9)."""
     items, lek = [], None
     while True:
         kwargs = {
@@ -765,15 +787,112 @@ def _pricing_rows() -> list:
     return items
 
 
+def _batch_get(keys: list) -> list:
+    """BatchGetItem over up to 100-key chunks; returns the raw items."""
+    out = []
+    for i in range(0, len(keys), 100):
+        chunk = keys[i:i + 100]
+        resp = ddb.batch_get_item(RequestItems={TABLE: {"Keys": chunk}})
+        out.extend(resp.get("Responses", {}).get(TABLE, []))
+        unproc = resp.get("UnprocessedKeys", {}).get(TABLE, {}).get("Keys", [])
+        while unproc:
+            resp = ddb.batch_get_item(RequestItems={TABLE: {"Keys": unproc}})
+            out.extend(resp.get("Responses", {}).get(TABLE, []))
+            unproc = resp.get("UnprocessedKeys", {}).get(TABLE, {}).get("Keys", [])
+    return out
+
+
+def _pricing_rows() -> list:
+    """All PRICING# rows for the console (D9).
+
+    Targeted reads: the catalog meta carries the written model-key list, so we
+    BatchGetItem the PUBLISHED + OVERRIDE rows for those keys plus the singleton
+    marker rows (_CATALOG, _COVERAGE) and a Query for the _ALIAS / _UNMATCHED
+    partitions. A capped full Scan runs ONLY when the meta (or its model_keys
+    list) is absent — the pre-D9 upgrade window.
+    """
+    meta = _catalog_meta_item()
+    model_keys = (meta or {}).get("model_keys")
+    if not model_keys:
+        return _scan_pricing_rows()
+    keys = []
+    for mk in model_keys:
+        keys.append({"pk": {"S": f"PRICING#{mk}"}, "sk": {"S": "PUBLISHED"}})
+        keys.append({"pk": {"S": f"PRICING#{mk}"}, "sk": {"S": "OVERRIDE"}})
+    # Overrides can also exist for models with no published row (operator priced
+    # a publishing-gap model): include the coverage universe's ids too.
+    cov = _read_coverage_item()
+    for m in (cov or {}).get("models", []):
+        mid = m.get("id", "")
+        if mid and mid not in model_keys:
+            keys.append({"pk": {"S": f"PRICING#{mid}"}, "sk": {"S": "OVERRIDE"}})
+            keys.append({"pk": {"S": f"PRICING#{mid}"}, "sk": {"S": "PUBLISHED"}})
+    rows = _batch_get(keys)
+    # Marker + partitioned rows the key list can't cover.
+    for pk in ("PRICING#_CATALOG", "PRICING#_COVERAGE"):
+        it = ddb.get_item(TableName=TABLE, Key={"pk": {"S": pk}, "sk": {"S": "META"}}).get("Item")
+        if it:
+            rows.append(it)
+    for part in ("PRICING#_ALIAS", "PRICING#_UNMATCHED"):
+        lek = None
+        while True:
+            kwargs = {
+                "TableName": TABLE,
+                "KeyConditionExpression": "pk = :p",
+                "ExpressionAttributeValues": {":p": {"S": part}},
+            }
+            if lek:
+                kwargs["ExclusiveStartKey"] = lek
+            page = ddb.query(**kwargs)
+            rows.extend(page.get("Items", []))
+            lek = page.get("LastEvaluatedKey")
+            if not lek:
+                break
+    return rows
+
+
+_EFFECTIVE_ROUTINGS = ("in_region", "global", "geo")
+_EFFECTIVE_DIRECTIONS = ("input", "output")
+
+
+def _effective_grid(entry: dict) -> dict:
+    """routing → direction → per-1M via the production resolver (contract §5).
+
+    The server-computed standard/default chain the console renders instead of
+    re-deriving locally (D11 deletes gridStd). Only routings/directions that
+    resolve to a rate are populated (null otherwise)."""
+    grid: dict = {}
+    for routing in _EFFECTIVE_ROUTINGS:
+        col = {}
+        for direction in _EFFECTIVE_DIRECTIONS:
+            col[direction] = resolve_rate(entry, direction, routing=routing).usd_per_1m
+        if any(v is not None for v in col.values()):
+            grid[routing] = col
+    return grid
+
+
 def _catalog() -> dict:
     """The pricing surface: priced models (rates grid + effective standard
-    rate), the unmatched review queue, operator aliases, and refresh meta.
+    rate + per-routing effective grid), the unmatched review queue, operator
+    aliases, refresh meta, and the gateway coverage join.
 
     Alias-materialized rows (alias_of set) fold into their canonical model's
-    `keys` list so the table shows one row per model. Source labels are only
-    the reachable ones: override | aws-published | unpriced (Req 9.5).
+    `keys` list so the table shows one row per model. Models present in the
+    coverage universe but with NO pricing row still appear (source unpriced,
+    gateway block populated — contract §5). Source labels are only the
+    reachable ones: override | aws-published | unpriced (Req 9.5).
     """
     rows = _pricing_rows()
+    coverage = _read_coverage_item()
+    # gateway block per model id, from the coverage item.
+    gw_by_id: dict = {}
+    for m in (coverage or {}).get("models", []):
+        gw_by_id[m.get("id", "")] = {
+            "available": bool(m.get("catalog_available")),
+            "listed": bool(m.get("listed")),
+            "control_plane": m.get("control_plane"),  # bool | None(unknown)
+            "lanes": m.get("lanes") or [],
+        }
     models: dict = {}
     unmatched: list = []
     aliases: list = []
@@ -785,6 +904,8 @@ def _catalog() -> dict:
         if key == "_CATALOG":
             meta = p
             continue
+        if key == "_COVERAGE":
+            continue  # folded into meta.coverage below
         if key == "_UNMATCHED":
             unmatched.append(p)
             continue
@@ -803,6 +924,13 @@ def _catalog() -> dict:
             entry["override"] = p
         # legacy PROVIDER/DEFAULT rows (pre-migration) are not part of the
         # pricing surface — the first refresh garbage-collects them
+
+    # Coverage-only models (invokable but unpriced — no pricing row at all)
+    # still appear in the catalog with source=None and the gateway block (§5).
+    for mid, gw in gw_by_id.items():
+        if mid not in models and not any(mid in e.get("keys", []) for e in models.values()):
+            models[mid] = {"model": mid, "keys": [mid], "coverage_only": True}
+
     out = []
     for model, e in sorted(models.items()):
         pub, ov = e.get("published"), e.get("override")
@@ -810,11 +938,14 @@ def _catalog() -> dict:
         res_in = resolve_rate(entry, "input")
         res_out = resolve_rate(entry, "output")
         eff_src = res_in.source if res_in.source != "unpriced" else res_out.source
+        keys = sorted(set(e.get("keys") or [model]))
+        gateway = gw_by_id.get(model) or next(
+            (gw_by_id[k] for k in keys if k in gw_by_id), None)
         out.append({
             "model": model,
             "display_name": (pub or {}).get("display_name") or model,
             "provider": (pub or {}).get("provider", ""),
-            "keys": sorted(set(e.get("keys") or [model])),
+            "keys": keys,
             "routing_modes": sorted((pub or {}).get("rates", {}).keys()) if pub else [],
             "rates": (pub or {}).get("rates"),
             "resolved_via": (pub or {}).get("resolved_via"),
@@ -824,8 +955,16 @@ def _catalog() -> dict:
             "effective": {"input_per_1m": res_in.usd_per_1m,
                           "output_per_1m": res_out.usd_per_1m,
                           "source": eff_src},
+            # server-computed standard grid per routing (console renders this)
+            "effective_grid": _effective_grid(entry),
+            "gateway": gateway,
             "override": ov,
         })
+    if coverage:
+        meta = dict(meta)
+        meta["coverage"] = {**(coverage.get("counts") or {}),
+                            "computed_at": coverage.get("computed_at"),
+                            "models": coverage.get("models") or []}
     return {
         "models": out,
         "unmatched": sorted(unmatched, key=lambda u: str(u.get("price_list_name", ""))),
@@ -834,6 +973,14 @@ def _catalog() -> dict:
         "count": len(out),
         "_UNIT": UNIT_PER_1M,
     }
+
+
+def _coverage() -> tuple[int, dict]:
+    """GET /pricing/coverage: the coverage item verbatim, or 404 if absent."""
+    item = _read_coverage_item()
+    if not item:
+        return 404, {"error": "no coverage computed yet; run a pricing refresh"}
+    return 200, item
 
 
 def _put_price_override(model: str, body: dict, actor: str) -> dict:
@@ -945,8 +1092,14 @@ def _pricing_meta() -> dict:
         log.warning(f"pricing meta read failed: {e}")
         item = None
     if not item:
-        return {"catalog_version": None, "refreshed_at": None}
+        return {"catalog_version": None, "refreshed_at": None,
+                "model_id_pattern": MODEL_ID_RE.pattern, "coverage": None}
     p = unwrap_item(item)
+    cov_item = _read_coverage_item()
+    coverage = None
+    if cov_item:
+        coverage = {**(cov_item.get("counts") or {}),
+                    "computed_at": cov_item.get("computed_at")}
     return {
         "catalog_version": p.get("offer_versions") or p.get("version"),
         "refresh_generation": p.get("refresh_generation"),
@@ -955,6 +1108,11 @@ def _pricing_meta() -> dict:
         "refreshed_at": p.get("refreshed_at"),
         "partial": p.get("partial", False),
         "region": p.get("region"),
+        # contract §5: exact regex source string of identity.MODEL_ID_RE
+        # (the BindModal validates against this instead of an inline literal).
+        "model_id_pattern": MODEL_ID_RE.pattern,
+        # coverage counts + computed_at (null if no coverage item yet).
+        "coverage": coverage,
     }
 
 
@@ -1064,6 +1222,24 @@ def handler(event, context):
 
     if route == "GET /pricing":
         return _resp(200, _cached("pricing", _catalog))
+
+    if route == "GET /pricing/coverage":
+        # cache HITS only: caching the 404 miss made the endpoint report "no
+        # coverage" for a full TTL after the first refresh completed (observed
+        # live 2026-08-21).
+        hit = _read_cache.get("pricing_coverage")
+        if hit and time.time() - hit[0] < READ_CACHE_TTL and hit[1][0] == 200:
+            status, body = hit[1]
+        else:
+            status, body = _coverage()
+            if status == 200:
+                _read_cache["pricing_coverage"] = (time.time(), (status, body))
+        resp = _resp(status, body)
+        if status == 200:
+            # short cache: coverage refreshes on the daily/on-demand cadence, so
+            # a brief TTL is safe and matches the console's read pattern.
+            resp["headers"]["Cache-Control"] = "private, max-age=30"
+        return resp
 
     # ── admin mutations (audited; self-target rejected) ──
     if route == "PUT /policy/{scope}":

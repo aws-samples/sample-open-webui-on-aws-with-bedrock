@@ -5,6 +5,21 @@ SPDX-License-Identifier: MIT-0
 
 # Pricing accuracy investigation — why models showed $0, and the fix
 
+> **SUPERSEDED (2026-08).** This investigation's Cause 2 — that frontier Claude
+> ids (`claude-sonnet-5`, `claude-opus-4-7`, `gpt-5.6-sol/-luna`) were
+> "genuinely unpublished" and needed operator overrides — was **disproven** by
+> the single-source pricing redesign
+> ([`.kiro/specs/metering-pricing-single-source/`](../../../.kiro/specs/metering-pricing-single-source/design.md),
+> analysis in [`05-PRICING-SINGLE-SOURCE.md`](05-PRICING-SINGLE-SOURCE.md),
+> coverage join in [`06-GATEWAY-PRICING-COVERAGE.md`](06-GATEWAY-PRICING-COVERAGE.md)).
+> Those Claude/GPT rates **were** published in the `AmazonBedrockFoundationModels`
+> offer file — a file the refresher was not reading — so the fix was to read that
+> file and join on the Bedrock control plane, not to hand-enter rates. Cause 1
+> (the too-narrow generator) was real and is addressed by the redesign. The
+> remaining genuinely-unpriced set is a different, measured lineage: the
+> GPT-5.x/GLM mantle publishing-gap family (see `05`/`06`), not the ids named
+> here. Kept for history.
+
 **Question raised:** "Every Bedrock model has publicly-available pricing. Why don't
 we have it? We shouldn't guess or set $0 when unsure." Correct on both counts.
 Everything below is grounded in **live AWS Price List Bulk API responses**

@@ -17,9 +17,12 @@ established that three of those sources exist to compensate for a gap in how the
 AWS Price List is read, not a gap in what AWS publishes:
 
 - The refresher reads 2 of the 4 Bedrock Price List service codes. The excluded
-  `AmazonBedrockFoundationModels` file carries 238 token-priced dimensions in
-  us-east-1 (3,855 across all regions) and holds all modern Anthropic Claude
-  pricing. The current usage-type patterns match none of them.
+  `AmazonBedrockFoundationModels` file carries the modern Anthropic Claude
+  pricing the current usage-type patterns match none of. (The original
+  investigation counted 238 us-east-1 token-priced dimensions in that file; a
+  2026-08-20/21 re-measurement of the live offer files counts 241 there and
+  1,113 across all three read files — see the addendum in
+  `05-PRICING-SINGLE-SOURCE.md`.)
 - Catalog rows are keyed from usage-type text, which yields Bedrock model ids for
   "mantle" usage types but display tokens (`Claude3Haiku`, `Claude4Sonnet`) for
   the others. The settle path looks up model ids, so those rows are written and
@@ -198,8 +201,8 @@ actually pays.
 3. WHEN an operator removes an override THEN the system SHALL revert the model to
    its AWS-published rate, or to unpriced if none exists.
 4. WHEN an operator submits an override THEN the system SHALL validate the rate is
-   a non-negative number within a plausible per-token bound and SHALL reject it
-   otherwise.
+   a non-negative number within a plausible per-1M-token bound (`0 ≤ rate ≤
+   1e6`, matching the stored per-1M unit) and SHALL reject it otherwise.
 5. WHEN an override is created, changed, or removed THEN the system SHALL write an
    audit record identifying the actor, the target model, and the before and after
    values.
@@ -377,6 +380,60 @@ that a future change cannot silently reintroduce a mis-pricing defect.
 10. The existing assertion that `anthropic.claude-sonnet-5` is unpriced SHALL be
     replaced, since that model is published.
 
+### Requirement 13 — Gateway-to-pricing coverage join
+
+**User Story:** As a finance operator, I want to know which models the gateway
+can actually serve but the catalog cannot price, so that an invokable-but-unpriced
+model is a named, alarmed condition rather than a silent $0 discovered only after
+someone is billed.
+
+#### Acceptance Criteria
+
+1. WHEN a pricing refresh completes THEN the system SHALL compute coverage over
+   the union of the models the gateway serves (its live catalog and the served
+   capability list) and the models the pricing catalog can resolve.
+2. The system SHALL record, per model in that union, whether it is listed in a
+   served lane, whether it is currently catalog-available, whether it resolves a
+   rate, and the rate source or the reason it is unpriced.
+3. The system SHALL persist the coverage result to the single metering store as
+   one item and expose it on the operator surface, including a count of
+   invokable-but-unpriced models.
+4. WHEN one or more served-and-available models resolve no rate THEN the system
+   SHALL emit a metric identifying the invokable-unpriced count and raise an
+   alarm on it.
+5. IF the served-catalog fetch fails THEN the coverage computation SHALL record a
+   partial result from what is known and SHALL NOT fail the pricing refresh.
+6. The system SHALL NOT block admission of an invokable-unpriced model on the
+   basis of coverage; coverage is a visibility surface, and the availability-first
+   admission posture is unchanged.
+
+### Requirement 14 — Pricing observability and deterministic merge
+
+**User Story:** As a maintainer, I want every price a model could be given to be
+either classified, deliberately excluded, or loudly flagged, and rate conflicts
+resolved without silent order-dependence, so that a coverage or accuracy
+regression surfaces as a signal instead of a silent wrong number.
+
+#### Acceptance Criteria
+
+1. WHEN the parser encounters a token price dimension it can neither classify nor
+   match to the named exclusion list THEN the system SHALL record it verbatim in
+   an `unclassified` set on the refresh metadata and emit a metric on that count,
+   rather than dropping it silently.
+2. The system SHALL match deliberate exclusions (`custom-model`,
+   APO `optimizePrompt`) by name and record them as excluded, distinct from
+   unclassified.
+3. WHEN two price dimensions supply conflicting rates for the same model, leaf,
+   and axis THEN the system SHALL keep the maximum (conservative for admission),
+   record the conflict, and emit a metric on the conflict count; identical
+   duplicates SHALL merge silently. The merge SHALL be order-independent.
+4. The system SHALL classify each unresolved Price List entry by reason and SHALL
+   alarm only on the actionable class (an ambiguous multi-candidate match), not on
+   historical no-current-twin entries.
+5. The admission path SHALL emit a metric when an estimate resolves no rate, and
+   the settle path SHALL emit a metric when it settles an unpriced model, so the
+   proactive coverage signal and the reactive usage signals are distinguishable.
+
 ---
 
 ## Traceability
@@ -396,3 +453,8 @@ that a future change cannot silently reintroduce a mis-pricing defect.
 | Three price stores; version stamp untruthful | 8.1–8.3 |
 | Interceptor estimate diverges from settlement | 8.4, 8.5 |
 | Pricing effectively untested | 12.1–12.10 |
+| Invokable models unpriced were a silent gap (06 coverage join) | 13.1–13.6 |
+| Silent `None`-drop of unknown usage-type shapes (D5) | 14.1, 14.2 |
+| First-wins-by-file-order merge was fragile (D7) | 14.3 |
+| Unmatched alarm fired on historical residue, not actionable entries (D8) | 14.4 |
+| Proactive vs reactive unpriced signals conflated | 14.5 |

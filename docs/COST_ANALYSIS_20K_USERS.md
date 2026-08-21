@@ -91,12 +91,23 @@ should target the `bedrock-mantle` limits.
 | Amazon Nova Micro | $0.035 | $0.14 | $0.10 | Simple Q&A, classification |
 | Amazon Nova Lite | $0.06 | $0.24 | $0.17 | Fast multimodal tasks |
 | Amazon Nova Pro | $0.80 | $3.20 | $2.24 | Complex reasoning, balanced cost |
-| Claude Haiku 4.5 | $1.00 | $5.00 | $3.40 | Fast, capable, good value |
+| Claude Haiku 4.5 | $1.10 | $5.50 | $3.74 | Fast, capable, good value |
 | Claude Sonnet 4.6 | $3.00 | $15.00 | $10.20 | Best quality/cost balance |
 | Claude Opus 4.6 | $5.00 | $25.00 | $17.00 | Flagship, complex tasks |
 | Llama 3.1 70B | $2.65 | $3.50 | $3.14 | Open-source, good reasoning |
 
 *Blended rate assumes 40% input / 60% output token ratio (typical for education — short prompts, longer responses).
+
+> **Rate source note.** The rows above are hand-authored planning figures, not
+> the runtime pricing path. The Claude Haiku 4.5 rate is corrected to AWS's
+> published us-east-1 in-region rate ($1.10 / $5.50 per 1M, measured
+> 2026-08-21). The Claude Sonnet 4.6 / Opus 4.6 rows are illustrative estimates
+> retained for scenario continuity — AWS's published in-region rates for the
+> current frontier models differ (e.g. Claude Opus 5 is $5.50 / $27.50 and
+> Claude Sonnet 5 is $2.20 / $11.00 per 1M). Authoritative per-model dollars
+> come from the single-source pricing catalog in DynamoDB (see
+> [`docs/METERING.md`](METERING.md)), never from this table; treat these numbers
+> as order-of-magnitude planning inputs only.
 
 ### Cost Scenarios by Model Strategy
 
