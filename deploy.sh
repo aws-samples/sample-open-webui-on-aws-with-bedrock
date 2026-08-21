@@ -148,6 +148,15 @@ load_env_file
 AWS_PROFILE="${AWS_PROFILE:-${AWS_DEPLOY_PROFILE:-}}"
 AWS_REGION="${AWS_REGION:-${BEDROCK_REGION:-us-east-1}}"
 
+# Sandbox override: when USE_AMBIENT_CREDS=1, ignore any profile and use the
+# ambient default credentials (AWS_SHARED_CREDENTIALS_FILE) for both the CLI and
+# the CDK Node SDK. The sandbox vends creds to the default profile and blocks
+# `aws configure export-credentials`, so a profile-based export yields nothing
+# and CDK fails with NoCredentials.
+if [[ "${USE_AMBIENT_CREDS:-0}" == "1" ]]; then
+  AWS_PROFILE=""
+fi
+
 # ── Helpers ─────────────────────────────────────────────────
 aws_cmd() {
   if [[ -n "$AWS_PROFILE" ]]; then
@@ -338,10 +347,13 @@ fi
 
 # Validate credentials
 info "Validating AWS credentials..."
-ACCOUNT_ID=$(aws_cmd sts get-caller-identity --query Account --output text 2>/dev/null) || {
-  err "Failed to validate AWS credentials for profile '$AWS_PROFILE' in region '$AWS_REGION'"
-  exit 1
-}
+ACCOUNT_ID="${DEPLOY_ACCOUNT_ID:-}"
+if [[ -z "$ACCOUNT_ID" ]]; then
+  ACCOUNT_ID=$(aws_cmd sts get-caller-identity --query Account --output text 2>/dev/null) || {
+    err "Failed to validate AWS credentials for profile '$AWS_PROFILE' in region '$AWS_REGION'"
+    exit 1
+  }
+fi
 log "Authenticated as account $ACCOUNT_ID"
 
 # Export credentials for CDK (SSO profiles need this)
