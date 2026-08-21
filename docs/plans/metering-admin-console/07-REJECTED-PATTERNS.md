@@ -71,3 +71,20 @@ global = 1/1.10 ≈ 0.909 × in-region, i.e. ~9.1% below. Concretely, Claude Opu
 is $5.50 in-region vs $5.00 global per 1M input. **Do not "correct" either
 number to match the other** — both are right; changing one to read like the
 other would make the doc wrong.
+
+## 7. Lane removal / capability denylist for unpriceable models — rejected 2026-08-21
+
+When `zai.glm-4.6` proved to be a publicly retired model still served by the
+mantle plane (real invoke 200; absent from `ListFoundationModels`, the pricing
+site, and all public docs), the candidate remedies were (a) remove it from the
+chat lane, which requires a new operator denylist in the capability refresher
+(the refresher re-snapshots caps from the live catalog, so a config-only edit
+would be re-added), or (b) keep it available and flagged. The operator chose
+(b) explicitly: **every actually-invokable gateway-discovered model stays
+available; unpriceable models are flagged (`UnpricedGatewayModels` + console),
+and a manual override — with its rationale documented in the `note` field — is
+the optional resolution.** A denylist adds a second availability-control
+surface to maintain and contradicts the sample's gateway-derived,
+availability-first posture. The `control_plane` coverage field stays as the
+evidence signal (16/54 live invokable models are cp-absent, including current
+priced ones, so cp-absence must never auto-act).

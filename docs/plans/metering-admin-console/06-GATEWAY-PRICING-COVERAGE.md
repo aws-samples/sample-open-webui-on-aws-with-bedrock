@@ -87,9 +87,11 @@ standard tier for input/output/cache axes as published; long-context published
 tiers recorded in the note). Dated snapshot ids (`-2026-03-05`, `-2026-04-23`)
 get their **own** override rows citing the base model-card page (AWS publishes no
 per-snapshot rate; no alias guessing). `zai.glm-4.6` has no AWS-published rate:
-**overriding it would invent a number — refused.** It is escalated as a
-lane-removal recommendation; until decided it stays visible as invokable-unpriced
-(the alarm names it — by design).
+**overriding it would invent a number — refused.** *Decision recorded
+2026-08-21:* the operator chose availability-always — every actually-invokable
+gateway model stays available; unpriceable ones are flagged (this alarm), and a
+manual override with a documented note is the optional resolution. Lane removal
+and a capability denylist were considered and rejected as overcomplication.
 
 **D5 — One usage-type grammar with an explicit exclusion list and a loud
 unknown-bucket.** `offers.py`'s four grammars (`_classify_snake`, `_classify_camel`,
