@@ -287,7 +287,14 @@ export class GatewayStack extends cdk.Stack {
         'bedrock-agentcore:GetGatewayTarget',
         'bedrock-agentcore:ListGatewayTargets',
       ],
-      resources: ['*'],
+      // Scoped to THIS gateway (create/list authorize against the gateway
+      // resource; get/delete against its targets) — a wildcard here would let
+      // the provisioner mutate targets on any gateway in the account
+      // (security scan 2026-08-21, IAM and Authorization).
+      resources: [
+        `arn:${cdk.Aws.PARTITION}:bedrock-agentcore:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:gateway/${this.gatewayId}`,
+        `arn:${cdk.Aws.PARTITION}:bedrock-agentcore:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:gateway/${this.gatewayId}/target/*`,
+      ],
     }));
 
     const targetProvider = new cr.Provider(this, 'TargetProvider', {
@@ -374,7 +381,13 @@ export class GatewayStack extends cdk.Stack {
           'bedrock-agentcore:GetGatewayTarget',
           'bedrock-agentcore:UpdateGatewayTarget',
         ],
-        resources: ['*'],
+        // Scoped to THIS gateway and its targets — the refresher must never be
+        // able to update targets on other gateways in the account
+        // (security scan 2026-08-21, IAM and Authorization).
+        resources: [
+          `arn:${cdk.Aws.PARTITION}:bedrock-agentcore:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:gateway/${this.gatewayId}`,
+          `arn:${cdk.Aws.PARTITION}:bedrock-agentcore:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:gateway/${this.gatewayId}/target/*`,
+        ],
       }));
       alertTopic.grantPublish(refresher);
 

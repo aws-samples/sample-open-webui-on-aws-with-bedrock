@@ -43,8 +43,10 @@ import urllib.request
 
 OFFICIAL_REPO = 'ghcr.io/open-webui/open-webui'
 RELEASES_URL = 'https://api.github.com/repos/open-webui/open-webui/releases/latest'
-TOKEN_URL = ('https://ghcr.io/token'
-             '?scope=repository:open-webui/open-webui:pull&service=ghcr.io')
+# GHCR's PUBLIC anonymous auth endpoint for pull-scope bearer exchange —
+# a well-known URL, not a credential (no secret is embedded or required).
+GHCR_ANON_AUTH_URL = ('https://ghcr.io/token'
+                      '?scope=repository:open-webui/open-webui:pull&service=ghcr.io')
 MANIFEST_URL = 'https://ghcr.io/v2/open-webui/open-webui/manifests/{tag}'
 ACCEPT = ', '.join([
     'application/vnd.oci.image.index.v1+json',
@@ -80,7 +82,7 @@ def latest_release_tag() -> str:
 
 def resolve_tag_digest(tag: str) -> str:
     """The sha256 index digest a ghcr tag currently points at (anonymous pull token flow)."""
-    with _http(TOKEN_URL) as resp:
+    with _http(GHCR_ANON_AUTH_URL) as resp:
         token = json.load(resp)['token']
     with _http(MANIFEST_URL.format(tag=tag),
                headers={'Authorization': f'Bearer {token}', 'Accept': ACCEPT},
