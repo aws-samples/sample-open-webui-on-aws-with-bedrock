@@ -15,6 +15,7 @@ stacks stage this directory into each consumer Lambda asset at synth time
 Lambda task root and in the repo tree.
 """
 
-from . import identity, resolver  # noqa: F401
+from . import identity, offers, resolver  # noqa: F401
+from .resolver import PRICING_CACHE_TTL_S  # noqa: F401  (D10: one shared TTL)
 
-__all__ = ["identity", "resolver"]
+__all__ = ["identity", "offers", "resolver", "PRICING_CACHE_TTL_S"]
