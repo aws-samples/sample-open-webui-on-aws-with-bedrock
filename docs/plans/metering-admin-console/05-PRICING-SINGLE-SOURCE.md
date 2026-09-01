@@ -261,7 +261,7 @@ per 1M) — announce it, because chargeback reports will move.
 ## Addendum — 2026-08-20/21 re-measurement (does not rewrite the above)
 
 The coverage and dimension figures in §2.1 above were the analysis-time floor.
-They were re-measured live on 2026-08-20/21 against account `511884928131`,
+They were re-measured live on 2026-08-20/21 against account `TEST_ACCOUNT_ID`,
 us-east-1, table `open-webui-metering` (refresh generation 20), and against the
 three live Bedrock offer files. This addendum records the current numbers; the
 original figures are kept above as the reasoning that led here. The coverage

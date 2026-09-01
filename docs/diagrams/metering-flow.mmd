@@ -1,0 +1,42 @@
+%% Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+%% SPDX-License-Identifier: MIT-0
+%% Optional metering lifecycle, this is a mechanism view, not a second topology.
+%%{init: {"sequence": {"useMaxWidth": true, "wrap": true, "diagramMarginX": 24, "diagramMarginY": 18, "actorMargin": 44, "messageMargin": 30}, "themeVariables": {"fontFamily": "Arial, sans-serif", "fontSize": "17px"}}}%%
+sequenceDiagram
+  autonumber
+  actor User as Signed-in user
+  participant OWUI as Open WebUI
+  participant GW as AgentCore gateway + interceptor
+  participant DB as DynamoDB ledger and pricing
+  participant BR as Amazon Bedrock
+  participant EV as EventBridge + debit
+  participant OPS as Console + assurance jobs
+
+  User->>OWUI: Send a model request
+  OWUI->>GW: Cognito bearer access token + request payload
+  GW->>DB: Read user USD policy, counter, RPM bucket, and rates
+
+  alt Recorded spend is over limit or RPM is exhausted in ENFORCE mode
+    GW-->>OWUI: OpenAI-shaped HTTP 429, next request is blocked
+    OWUI-->>User: Present the upstream error through the active lane
+  else Allowed, or OBSERVE mode
+    GW->>DB: Write OPEN estimate and RPM tick
+    GW->>BR: Invoke with gateway IAM role + project/workspace header
+    BR-->>OWUI: Model response with provider usage when available
+    OWUI->>EV: Seeded filter emits persisted normalized usage
+    EV->>DB: Transactionally append ledger, add actual usage, subtract and close estimate
+    DB-->>OPS: Serve self-service and admin usage views
+  end
+
+  par Daily or on-demand pricing and coverage
+    OPS->>DB: Refresh AWS Price List rates and PRICING#_COVERAGE
+  and Estimate recovery every five minutes
+    OPS->>DB: Resolve OPEN estimates older than 15 minutes
+    Note over OPS,DB: Refund is the default, settle-at-estimate is an operator configuration
+  and Assurance signals
+    OPS->>GW: Hourly block canary uses the real Chat Completions path
+    OPS->>EV: Hourly capture canary begins at EventBridge
+    OPS->>DB: Nightly D-2 token comparison uses account Cost Explorer data
+  end
+
+  Note over GW,DB: Availability first: unpriced calls remain available at $0 recorded cost, store and capture failures normally preserve chat, concurrent calls can cross a limit before the next-request block.

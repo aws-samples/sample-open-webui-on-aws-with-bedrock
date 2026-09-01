@@ -1,90 +1,121 @@
-# Open WebUI — AWS CDK Infrastructure
+# AWS CDK infrastructure
 
-AWS CDK (TypeScript) infrastructure for deploying Open WebUI on Amazon ECS with Fargate.
+[Documentation home](../docs/README.md) · [Deployment guide](../docs/AWS_DEPLOYMENT_GUIDE.md) ·
+[Gateway architecture](../docs/GATEWAY_INTEGRATION_GUIDE.md)
 
-## Stacks
+This directory contains the TypeScript AWS CDK v2 application. Consumers should
+deploy from the repository root with `./deploy.sh`; bare CDK does not perform
+image resolution, dependency vendoring, output collection, Cognito secret and
+callback reconciliation, or the final ECS environment update.
 
-| Stack | Resources | Description |
+## Composition
+
+[`bin/app.ts`](bin/app.ts) is the composition root. Domain resources remain in
+the corresponding stack files under [`lib/`](lib/).
+
+| Stack | Primary resources | Dependency |
 |---|---|---|
-| `OpenWebUI-Network` | VPC, subnets, NAT, VPC endpoints, security groups | Isolated network with private subnets and endpoints for S3, CloudWatch, Secrets Manager |
-| `OpenWebUI-Data` | Aurora PostgreSQL Serverless v2 (17.7 LTS), ElastiCache Redis, S3 | Auto-scaling database (0.5–8 ACU), Redis with TLS (CfnReplicationGroup), file storage |
-| `OpenWebUI-Auth` | Cognito User Pool, client, domain, groups | SSO authentication with admin/user/power-users/basic-users groups |
-| `OpenWebUI-Gateway` | AgentCore inference gateway, models-filter interceptor Lambda, inference-target custom resource, gateway execution role | Per-user (Cognito JWT) inference endpoint fronting `bedrock-mantle`; see [`GATEWAY_INTEGRATION_GUIDE.md`](../docs/GATEWAY_INTEGRATION_GUIDE.md) |
-| `OpenWebUI-Compute` | ECS Fargate, internal ALB, CloudFront VPC origin, Secrets Manager | Container compute (1–10 tasks) running the unmodified official image, HTTPS via CloudFront, credential management |
+| `OpenWebUI-Network` | VPC, two-AZ public/private subnets, NAT gateways, endpoints, security groups | — |
+| `OpenWebUI-Data` | Aurora PostgreSQL Serverless v2/pgvector, ElastiCache Redis, S3 uploads | Network |
+| `OpenWebUI-Auth` | Cognito user pool, app client, Managed Login, role groups | — |
+| `OpenWebUI-Gateway` | AgentCore gateway, interceptor, target custom resource, optional capability refresher | Auth |
+| `OpenWebUI-Metering` | Optional table, settlement/recovery/pricing/assurance, admin API, console | Gateway |
+| `OpenWebUI-Compute` | Fargate, internal ALB, CloudFront VPC origin, application secrets and runtime assets | Data, Auth, Gateway, Metering when enabled; consumes Network resources |
 
-**Dependency order:** Network → Data + Auth (parallel), Auth → Gateway → Compute
+CDK may deploy independent branches concurrently; this is not one fixed linear
+stack order.
 
-## Quick Start
+## Consumer deployment
+
+From the repository root:
 
 ```bash
-cd infra
-npm install
-npx cdk bootstrap aws://ACCOUNT_ID/REGION --profile YOUR_PROFILE
-npx cdk deploy --all --require-approval broadening --profile YOUR_PROFILE
+cp .env.example .env
+./deploy.sh --profile YOUR_PROFILE --region us-east-1
+# add --metering only when the optional module is intended
 ```
 
-Or use the automated deploy script from the repo root:
+See the [deployment guide](../docs/AWS_DEPLOYMENT_GUIDE.md). Do not present
+`npx cdk deploy --all` as an equivalent quick start.
 
-```bash
-./deploy.sh --profile YOUR_PROFILE
-```
+## Configuration precedence
 
-## Container image
+`bin/app.ts` resolves most configuration in this order:
 
-The Compute stack runs the **unmodified official Open WebUI image** from
-`ghcr.io/open-webui/open-webui` — there is no image build. The version comes
-from the `openWebuiImage` CDK context value, which `deploy.sh` sets from the
-`OPEN_WEBUI_IMAGE` variable in `.env` after resolving it to an immutable
-`@sha256:` digest (`scripts/resolve-owui-image.py`); when the variable is
-unset, the deploy resolves the **latest official release**. If no context is
-supplied at all (bare `cdk deploy` without the script), the stack falls back
-to the `DEFAULT_IMAGE` release tag pinned at the top of
-[`lib/compute-stack.ts`](lib/compute-stack.ts). The Amazon Bedrock integration
-is the Gateway stack plus a pipe function and two OpenAI connections seeded
-into the app at container start (see [`../pipe/`](../pipe/)). Upgrades and
-rollback: [`../docs/UPGRADE_RUNBOOK.md`](../docs/UPGRADE_RUNBOOK.md).
+1. CDK CLI context;
+2. ignored local `infra/deploy.config.json`; and
+3. code/environment preset defaults.
 
-## Configuration
+`deploy.sh` forwards its supported flags and selected `.env` values into this
+contract. Not every CDK context key has a shell flag.
 
-- **Domain/cert:** `infra/deploy.config.json` (gitignored) — persists across deploys
-- **App config:** `.env` in repo root — source of truth for all application settings
-- **CDK context:** CLI context overrides `deploy.config.json` values
-
-### Optional CDK context flags
-
-| Flag | Default | Effect |
+| Context | Default | Maintainer meaning |
 |---|---|---|
-| `openWebuiImage` | `DEFAULT_IMAGE` in `lib/compute-stack.ts` | Open WebUI image reference (tag or `@sha256:` digest) for the Compute stack. `deploy.sh` always passes this, pre-resolved to a digest. |
-| `metering` | `off` | `on` synthesizes and wires the opt-in `OpenWebUI-Metering` stack (`deploy.sh --metering`, [docs/METERING.md](../docs/METERING.md)). |
-| `enableModelRefresh` | `false` | Adds the scheduled model-capability refresher (Lambda + EventBridge schedule + SNS topic) to the Gateway stack. When `false`, none of these resources exist. See [the gateway guide](../docs/GATEWAY_INTEGRATION_GUIDE.md#operational-notes). |
-| `modelRefreshRateHours` | `24` | Refresher cadence, in hours (only when `enableModelRefresh=true`). |
-| `domainName` / `certificateArn` | — | Custom domain + ACM cert (us-east-1); normally persisted in `deploy.config.json` by `deploy.sh` rather than passed by hand. |
-| `meteringMode` | `enforce` | `observe` makes the metering interceptor log-only ([docs/METERING.md](../docs/METERING.md)). |
-| `meteringGsiPhase` | — | Staged DynamoDB GSI rollout for the metering table (see metering-stack.ts). |
-| `cloudfrontPrefixListId` | auto | Override the CloudFront origin-facing managed prefix list id if lookup fails in your partition/region. |
-| `environment` | — | `dev` / `prod` presets (`lib/environment-config.ts`): prefixes stack and resource names, sets capacity. **Not supported by `deploy.sh`**, which targets the default (unprefixed) stack names — use bare `cdk deploy` end to end if you adopt it. |
+| `openWebuiImage` | fallback tag in `lib/compute-stack.ts` | Consumer script normally supplies a resolved tag/digest. Bare CDK uses the fallback. |
+| `metering` | `off` | `on` creates Metering and switches Gateway/Compute integration. Consumer flag: `--metering`. |
+| `meteringMode` | `enforce` | `observe` logs healthy deny decisions but still writes admission state. Consumer flag: `--metering-mode`. |
+| `meteringGsiPhase` | unset | One-time staged GSI rollout for older metering tables. Consumer flag: `--metering-gsi-phase 1`. |
+| `enableModelRefresh` | `false` | Adds scheduled probe, collapse guard, target refresh, and SNS diff. Consumer `.env`: `ENABLE_MODEL_REFRESH=true`. |
+| `modelRefreshRateHours` | `24` | Refresher cadence when enabled. |
+| `domainName` / `certificateArn` | unset | Custom CloudFront domain/certificate; consumer flags persist them locally. |
+| `fargateCpu` / `fargateMemory` | 1024 / 2048 | Task sizing; consumer flags: `--cpu`, `--memory`. |
+| `environment` | unset | Maintainer dev/prod presets with prefixed stack names. `deploy.sh` expects default unprefixed outputs and does not support this context end to end. |
 
-Pass with `-c`, e.g. `./deploy.sh` after `npx cdk deploy -c enableModelRefresh=true`,
-or add to `cdk.context.json`. `deploy.sh` vendors the refresher's Python deps
-(boto3 ≥ 1.43 + requests) only when the flag is on.
+Do not commit `deploy.config.json` or `cdk.context.json`; they are local
+deployment state.
 
-## Key Design Decisions
+## Image and runtime integration
 
-- **Internal ALB + CloudFront VPC origin** — ALB has no public ingress. CloudFront manages connectivity via ENIs in the VPC.
-- **WebSocket over the VPC origin** — CloudFront supports WebSocket to VPC origins; the stack pins `ENABLE_WEBSOCKET_SUPPORT=true` and shares Socket.IO state across tasks via the Redis manager.
-- **Redis via CfnReplicationGroup** — Required for TLS support (CfnCacheCluster doesn't support TLS).
-- **DATABASE_URL composed by an ECS command override** — the official image's `start.sh` ships unpatched; the task command exports `DATABASE_URL` from component env vars (host/port/name/user + password injected from Secrets Manager) before exec'ing it.
-- **Vectors in Aurora pgvector** — `VECTOR_DB=pgvector` so retrieval data survives task restarts (the default on-container Chroma store is ephemeral).
-- **Aurora engine pinned to an LTS minor** — `AuroraPostgresEngineVersion.VER_17_7`. LTS minors carry a multi-year standard-support window (17.7: through 2030-02-28), so a cloned sample is not force-upgraded off an unsupported minor. When bumping, pick the current LTS minor from the [Aurora PostgreSQL release calendar](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraPostgreSQLReleaseNotes/aurorapostgresql-release-calendar.html) rather than the highest available number.
+Compute uses `ContainerImage.fromRegistry` and never builds Open WebUI. The
+supported script selects an official release by default and attempts to resolve
+it to a digest. The Fargate command downloads AWS-authored pipe/seeder assets,
+runs the seeders in the background, then executes upstream `bash start.sh`.
+
+The exact guarantees differ for a custom registry, an unresolved tag fallback,
+or bare CDK. See the [upgrade runbook](../docs/UPGRADE_RUNBOOK.md).
+
+## Important implementation boundaries
+
+- CloudFront redirects viewers to HTTPS but uses an HTTP-only VPC origin to the
+  internal ALB; the ALB forwards HTTP to port 8080.
+- CloudFront caching is disabled for the application behavior.
+- `VECTOR_DB=pgvector` keeps retrieval vectors in Aurora rather than ephemeral
+  task storage.
+- Redis TLS and the Redis WebSocket manager share Socket.IO state across tasks.
+- Cognito group claims drive Open WebUI role/group synchronization.
+- The gateway validates the user's JWT; its execution role invokes Mantle.
+- Metering wiring is conditional. With `metering=off`, no Metering stack or
+  metering runtime assets/environment are synthesized.
 
 ## Validation
 
+From `infra/`:
+
 ```bash
-npx tsc --noEmit          # TypeScript compilation check
-npx cdk synth --quiet     # CloudFormation template generation
-npx cdk diff              # Preview changes before deploy
+npm install
+npm run build
+npx tsc --noEmit
+npx cdk synth --quiet
 ```
 
-## Full Documentation
+Use `npx cdk diff` with an explicitly verified account/profile before a real
+infrastructure change. CDK synthesis can require the same local generated
+console artifacts or vendored dependencies that `deploy.sh` prepares.
 
-See [AWS Deployment Guide](../docs/AWS_DEPLOYMENT_GUIDE.md) for complete deployment instructions, security considerations, and troubleshooting.
+For repository-wide checks, also run:
+
+```bash
+cd ..
+python3 -m pytest metering/tests -q
+node scripts/docs-integrity.mjs
+node scripts/docs-check.mjs
+bash -n deploy.sh
+```
+
+## Related source
+
+- [`lib/gateway-stack.ts`](lib/gateway-stack.ts) — gateway/interceptor/target/refresher
+- [`lib/metering-stack.ts`](lib/metering-stack.ts) — optional governance control plane
+- [`lib/metering-console.ts`](lib/metering-console.ts) — console distribution and PKCE client
+- [`lib/compute-stack.ts`](lib/compute-stack.ts) — upstream image, runtime assets, Fargate/ALB/CloudFront
+- [`bin/app.ts`](bin/app.ts) — cross-stack composition and dependencies

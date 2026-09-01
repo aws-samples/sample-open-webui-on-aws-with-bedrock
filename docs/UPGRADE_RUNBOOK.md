@@ -1,281 +1,260 @@
-# Open WebUI Upstream Upgrade Runbook
+# Open WebUI upgrade and rollback runbook
 
-Repeatable process for upgrading (or pinning, or rolling back) the upstream
-Open WebUI release this sample deploys.
+[Documentation home](README.md) · [Deployment guide](AWS_DEPLOYMENT_GUIDE.md) ·
+[Gateway integration](GATEWAY_INTEGRATION_GUIDE.md)
 
-## How this sample tracks upstream
+This repository vendors no Open WebUI source and builds no application image.
+A supported deployment runs an official `ghcr.io/open-webui/open-webui` release
+and installs the AWS integration at runtime. An upgrade therefore changes the
+selected image while preserving and revalidating the database and integration
+contracts.
 
-This repository vendors **no upstream source** and builds **no image**. The
-deployed application is the **completely unmodified official Open WebUI image**
-pulled from `ghcr.io/open-webui/open-webui`. The Amazon Bedrock integration is
-delivered entirely as AWS infrastructure + runtime configuration — an
-[AgentCore inference gateway](GATEWAY_INTEGRATION_GUIDE.md)
-plus a small [Claude pipe](../pipe/gateway_anthropic_pipe.py) and two OpenAI
-connections that [`pipe/seed.py`](../pipe/seed.py) writes into the app database
-at container start.
+> [!CAUTION]
+> Open WebUI is a separately licensed third-party application. Review its
+> release notes and license, test the target release in an isolated environment,
+> and own the database migration/rollback outcome. This sample does not certify
+> an upstream release.
 
-**Which version runs is decided in one place**: the `OPEN_WEBUI_IMAGE` variable
-in `.env` (untracked operator state, not a source file):
+## Image-selection contract
 
-| `OPEN_WEBUI_IMAGE` | What deploys |
+`OPEN_WEBUI_IMAGE` lives in the ignored root `.env` file:
+
+| Selection | Supported deploy behavior |
 |---|---|
-| unset *(the default)* | The **latest official Open WebUI release**. `deploy.sh` discovers the newest release tag and resolves it to its immutable `@sha256:` index digest at deploy time ([`scripts/resolve-owui-image.py`](../scripts/resolve-owui-image.py)). Requires reach to `api.github.com` and `ghcr.io` from the deploy machine; fails with an actionable error otherwise. |
-| a release tag, e.g. `ghcr.io/open-webui/open-webui:v0.11.0` | That release, resolved to its digest at deploy time. If `ghcr.io` is unreachable from the deploy machine, the tag is passed through unresolved with a loud warning (see the caution in step 3). |
-| a digest, e.g. `ghcr.io/open-webui/open-webui@sha256:…` | Exactly that image, verbatim — no network needed at resolution time. This is the reproducible form: use it for anything you care about, and for rollback. |
+| Unset (default) | `deploy.sh` discovers the latest official release tag at deploy time and attempts to resolve its multi-architecture GHCR index to a digest. A later full deploy can therefore select a newer release. |
+| Official release tag | The resolver attempts to replace that tag with its immutable digest. If registry access fails, the script warns and passes the floating tag through. |
+| Official digest | The exact reference is used without registry resolution. This is the most reproducible selection and the rollback format to record. |
+| Custom registry/reference | Passed through; the repository cannot claim official provenance or immutability for it. |
 
-Because the task definition carries a **digest** (on every path except the
-unreachable-registry fallback), every task launch — autoscaling, crash
-replacement, `--force-new-deployment` — runs byte-identical software. Nothing
-changes version until you deliberately run a deploy. A same-`.env` redeploy
-*is* an upgrade when the variable is unset, because the deploy re-resolves
-"latest release" at that moment; pin a digest if you don't want that.
+Do not set `:latest`; upstream uses it for a main-branch image rather than a
+release. Bare CDK also has a fallback tag and skips important deployment-script
+steps, so use `./deploy.sh` for the lifecycle described here.
 
-Avoid `:latest` as a value: on ghcr it is upstream's **main-branch build**, not
-the newest release.
+## 1. Record the running state
 
-So "upgrading" is just **deploying with a newer version selected**. There is no
-source to vendor, no diffs to re-apply, and no image to build. The real risks
-are (a) an upstream release changing something the seeder or pipe depends on
-(step 2) and (b) upstream's own database migrations (step 3).
-
-Run **v0.10.2 (2026-07-01) or newer** — that release carries upstream security
-and access-control fixes. The unset default (latest release) always satisfies
-this.
-
-## 1. Record what you're running, then choose the target
-
-Before changing anything, record the current image — it is your rollback
-target:
+Confirm the account and region first:
 
 ```bash
-aws cloudformation describe-stacks --stack-name OpenWebUI-Compute \
-  --query "Stacks[0].Outputs[?OutputKey=='AppImageUri'].OutputValue" --output text
-# e.g. ghcr.io/open-webui/open-webui@sha256:9fcea9c6…   ← keep this
+aws sts get-caller-identity --profile YOUR_PROFILE
 ```
 
-(If earlier deploys used a tag rather than a digest, get the *running* digest
-from `aws ecs describe-tasks` → `containers[0].imageDigest` instead.)
-
-Then choose the target version:
-
-- **Track the latest release** — leave `OPEN_WEBUI_IMAGE` unset in `.env`.
-  Preview what "latest" currently is before deploying:
-
-  ```bash
-  python3 scripts/resolve-owui-image.py
-  # [resolve-owui-image] latest official release: vX.Y.Z
-  # [resolve-owui-image] resolved vX.Y.Z -> sha256:…
-  ```
-
-- **Pin a specific release** — set the tag (resolved to a digest at deploy
-  time) or run the resolver yourself and set the digest form:
-
-  ```bash
-  python3 scripts/resolve-owui-image.py ghcr.io/open-webui/open-webui:vX.Y.Z
-  # → ghcr.io/open-webui/open-webui@sha256:…   ← put this in .env
-  ```
-
-Release notes live at <https://github.com/open-webui/open-webui/releases>.
-Prefer release tags (`vX.Y.Z`) — never `main`, and not `:latest` (which is
-main).
-
-## 2. Check for breaking changes that affect the integration
-
-Because the app is unmodified, the **only** things an upstream release can break
-are the surfaces this sample plugs into. Skim the release notes and diff
-`<running version>..<target version>` for material changes to:
-
-- **`backend/open_webui/models/config.py`** — the seeder writes per-key rows to
-  the `config` table: `openai.api_base_urls`, `openai.api_keys`,
-  `openai.api_configs`, `openai.enable`. A schema/key-name change here breaks the
-  two OpenAI connections.
-- **`backend/open_webui/models/functions.py`** — the seeder inserts the Claude
-  pipe row into the `function` table. A schema change breaks pipe installation.
-- **`backend/open_webui/routers/openai.py`** — the OpenAI connection contract.
-  The connections rely on the `api_config` keys `prefix_id`, `model_ids`,
-  `connection_type`, `auth_type`, `headers` (the `x-models-flavor` header), and
-  `api_type` (`responses` for the `gwr` lane). If any key is renamed or its
-  semantics change, the lanes mis-route.
-- **`backend/open_webui/utils/oauth.py`** — the `auth_type: system_oauth`
-  behavior and the `oauth_manager` / `oauth_session` token path the Claude pipe
-  reads (`app.state.oauth_manager.get_oauth_token`, `OAuthSessions`, the
-  `oauth_session_id` cookie). If this path changes, the pipe can't obtain the
-  user's bearer token.
-
-If any of these changed materially, **test the seeder against a dev deploy before
-your main environment** (deploy the target version to a scratch environment and
-confirm the pipe + both connections install and work — see step 5). If nothing
-relevant changed, the upgrade is a config-only version change.
-
-## 3. Snapshot the database — upstream migrates it on start
-
-Upstream ships its own schema migrations, and **they run automatically the
-moment a task with a newer release starts** — there is no separate "migrate"
-step you control, and no built-in downgrade path. Some releases (v0.10.2 among
-them) ship schema changes with an explicit upstream warning against running two
-application versions against one database simultaneously. Treat every release
-boundary as a database event:
-
-- **Snapshot Aurora first, every time.** Not optional:
-
-  ```bash
-  # RDS identifiers allow only letters, digits, and single hyphens — write the
-  # version with hyphens (v0-11-0), not dots.
-  SNAP="pre-owui-v0-11-0-$(date +%Y%m%d)"
-  aws rds create-db-cluster-snapshot \
-    --db-cluster-identifier <cluster-id> \
-    --db-cluster-snapshot-identifier "$SNAP"
-  aws rds wait db-cluster-snapshot-available \
-    --db-cluster-snapshot-identifier "$SNAP"
-  ```
-
-  Wait for `available` **before** the new image starts. A migration that goes
-  wrong is otherwise unrecoverable short of point-in-time restore.
-
-- **Minimize the old+new window.** The rolling ECS deployment briefly runs old
-  and new tasks side by side against one database. For releases whose notes
-  flag schema changes, don't accept that window: scale the service to 0, deploy,
-  scale back up — so only one app version ever touches the DB during the
-  migration.
-
-- **Know what protects you (and what doesn't).** Because the task definition
-  pins a digest, ordinary task churn can never start a newer release or run a
-  migration you didn't plan — version changes happen only at deploys. The one
-  exception: if the resolver warned it could not resolve your tag and passed it
-  through (restricted-egress deploy machine), the task definition floats and
-  any task launch may pull a newer build **and migrate the database
-  unplanned**. If you saw that warning and are running with a floating tag,
-  either accept that risk deliberately or switch to a digest pin now.
-
-- **Rollback ≠ downgrade.** Rolling the *image* back (step 6) does not roll the
-  *schema* back. Old app code usually tolerates additive migrations, but the
-  snapshot is your real undo. Fresh installs are unaffected by all of this.
-
-## 4. (Optional) Refresh the model capability matrix
-
-New Bedrock models surface in the dropdown **only** when they're added to
-[`config/model-capabilities.json`](../config/model-capabilities.json), which is
-the gateway interceptor's input. To pick up newly available models, regenerate
-it and redeploy the Gateway stack:
+Record the image reference CloudFormation knows:
 
 ```bash
-uv run --no-project --with boto3 python scripts/probe-model-capabilities.py
-# review + commit the updated config/model-capabilities.json, then:
-cd infra && npx cdk deploy OpenWebUI-Gateway
+aws cloudformation describe-stacks \
+  --stack-name OpenWebUI-Compute \
+  --profile YOUR_PROFILE --region us-east-1 \
+  --query "Stacks[0].Outputs[?OutputKey=='AppImageUri'].OutputValue" \
+  --output text
 ```
 
-This is independent of the image upgrade — do it whenever you want new models,
-not only at upgrade time.
+Also record:
 
-## 5. Deploy and smoke-test
+- current task-definition revision and each running task's `imageDigest`;
+- current application URL;
+- whether metering and scheduled model refresh are enabled;
+- Aurora cluster identifier and latest restorable time;
+- current stack status and any active alarms; and
+- the exact `.env` image selection without copying secrets into the change
+  record.
+
+If the task definition contains only a tag, the ECS running-task digest is the
+stronger rollback reference.
+
+## 2. Select and inspect the target
+
+Release notes are published at
+<https://github.com/open-webui/open-webui/releases>. Choose an official release
+that you have reviewed rather than asserting that the newest release is safe.
+
+Preview resolution without changing AWS resources:
 
 ```bash
-./deploy.sh          # or your own CI running: cd infra && npx cdk deploy --all
+# Resolve the current latest official release
+python3 scripts/resolve-owui-image.py
+
+# Resolve a chosen official tag
+python3 scripts/resolve-owui-image.py \
+  ghcr.io/open-webui/open-webui:vX.Y.Z
 ```
 
-**Match the flags your deployment runs with.** Opt-in modules must be re-stated
-on every deploy: a metering-enabled deployment upgrades with
-`./deploy.sh --metering`, and a deployment using the scheduled model refresher
-needs `ENABLE_MODEL_REFRESH=true` (in `.env` or the environment). Omitting a
-flag doesn't delete the module's stack, but it silently de-wires it from the
-new task definition (metering env vars and the seeded filter drop out of the
-container), so usage capture stops without any error.
+Record the returned digest. If resolution warns and returns a tag, stop for any
+environment where floating task launches are unacceptable.
 
-The deploy log prints the exact image it resolved — record it next to the
-rollback target from step 1:
+### Known integration contracts to compare
 
-```
-[→] Open WebUI image: ghcr.io/open-webui/open-webui@sha256:…
-```
+This list is not exhaustive; it identifies repository-specific seams that need
+explicit attention:
 
-The only stack that changes for a version bump is the Compute stack (new image
-reference → new task definition → rolling deploy). The service is protected by
-a deployment circuit breaker, a healthy-host deployment alarm, and a 5-minute
-bake window — a deployment that fails to stabilize rolls back to the previous
-task definition automatically. Then verify manually:
+- container startup command and `bash start.sh`;
+- `/health` behavior and startup timing;
+- supported environment variables for OIDC, S3, Redis/WebSocket state, and
+  pgvector;
+- database migration compatibility and whether mixed old/new tasks are allowed;
+- `config`, `function`, and OAuth-session database models used by the seeders
+  and Claude pipe;
+- OpenAI connection configuration (`auth_type: system_oauth`, headers,
+  `api_type: responses`, prefixes, model IDs);
+- OAuth manager/session access used to obtain the user's token;
+- global filter inlet/outlet hooks and persisted assistant-message usage shape;
+- streaming, tool, image, and usage conventions used by the Claude pipe; and
+- Python/boto3 availability used by the runtime bootstrap.
 
-- [ ] **OIDC login** — Cognito SSO completes at `/auth` and redirects home.
-- [ ] **Model dropdown populates from all three lanes** — Chat Completions and
-      Responses (the two native OpenAI connections) plus Claude (the pipe's own
-      discovered models). If a lane is empty, that connection or the pipe failed
-      to seed (check the container logs for the seeder output).
-- [ ] **A streamed chat works on each lane** — send a real message to a
-      Chat-Completions model, a Responses model, and a Claude model. HTTP 200 on
-      the model-list endpoint is **not** sufficient; only an actual streamed
-      response proves the connection/pipe contract still holds against the new
-      release.
+Review upstream source/release changes for each seam. Database, auth, startup,
+and usage-persistence changes deserve an isolated deployment even if the UI
+looks unchanged.
 
-The browser UI is the easiest way to run the checklist. If you script it
-instead, note that the two native lanes authenticate with `system_oauth`: the
-app resolves the user's OAuth token from the `oauth_session_id` **cookie**, so
-API calls made with only the `Authorization: Bearer` header will show an empty
-model list for those lanes. Send the browser session cookies along with the
-token (the Claude pipe lane has the same requirement at chat time).
+## 3. Protect the database
 
-## 6. Roll back if anything fails
+Upstream migrations run when the new container starts. There is no separate
+migration step in this repository and no guaranteed schema downgrade.
 
-The rollback target is the digest you recorded in step 1 (or the previous
-deploy's log line). In `.env`:
+Before deploying:
+
+1. create an Aurora cluster snapshot with a unique, compliant identifier;
+2. wait for the snapshot to become `available`;
+3. verify point-in-time restore state and retention;
+4. record how a restored cluster would be connected to a replacement stack; and
+5. read the upstream release's mixed-version guidance.
+
+Example after substituting the verified cluster identifier:
 
 ```bash
-OPEN_WEBUI_IMAGE=ghcr.io/open-webui/open-webui@sha256:<previous digest>
+SNAP="pre-owui-vX-Y-Z-$(date +%Y%m%d-%H%M%S)"
+
+aws rds create-db-cluster-snapshot \
+  --db-cluster-identifier YOUR_CLUSTER_ID \
+  --db-cluster-snapshot-identifier "$SNAP" \
+  --profile YOUR_PROFILE --region us-east-1
+
+aws rds wait db-cluster-snapshot-available \
+  --db-cluster-snapshot-identifier "$SNAP" \
+  --profile YOUR_PROFILE --region us-east-1
 ```
 
-then `./deploy.sh` again. There is no "pin commit" to revert — the selection
-lives in untracked `.env`, so rollback is an explicit redeploy of the recorded
-digest. (A deployment that never stabilized will usually have rolled itself
-back already via the circuit breaker/alarm; the manual path is for regressions
-that surface after the deployment completed.) Remember from step 3: this rolls
-the image back, not the schema — if the bad release migrated the database and
-the old version can't read it, restore the snapshot.
+A successful image rollback does not reverse a schema migration. The snapshot
+or point-in-time restore plan is the database rollback.
 
-## Recommended cadence
+## 4. Test outside the main environment
 
-- **Every deploy is an upgrade opportunity.** With `OPEN_WEBUI_IMAGE` unset,
-  any full `./deploy.sh` re-resolves the latest release — so upgrades happen on
-  your schedule, at deploy time, never behind your back.
-- **Monthly** — deploy to absorb the newest release, following steps 1-5.
-- **Out-of-band** — on upstream security advisories (like v0.10.2's).
-- **For environments you care about**, pin the resolved digest in `.env` and
-  move it deliberately; the unset default is the right choice for fresh
-  evaluations and demos.
-- Release tags only — never `main`, and `:latest` *is* main on ghcr.
+Deploy the target digest to an isolated account/environment with representative
+configuration and non-sensitive data. Verify:
 
-## Metering module: upgrading through the single-source pricing change
+- Cognito sign-in, sign-out, group/role mapping, and callback URLs;
+- upstream migrations and application health;
+- startup seeding of `gw`, `gwr`, the Claude pipe, and the metering filter when
+  enabled;
+- model discovery and one real streamed response in each non-empty lane;
+- WebSocket behavior with more than one task if scale-out matters;
+- uploads, retrieval/pgvector, Redis-backed shared state, and application
+  restart;
+- admin actions and ordinary-user restrictions;
+- provider usage persistence and metering settlement when enabled; and
+- rollback to the recorded prior digest against an appropriate database copy.
 
-Deployments created before the single-source pricing redesign
-(`.kiro/specs/metering-pricing-single-source/`) carry the legacy four-tier
-catalog in the metering table (`PROVIDER` / `DEFAULT` rows, display-token-keyed
-`PUBLISHED` rows like `PRICING#Claude3Haiku`, per-token override rows) and a
-bundled `config/model-prices.json` snapshot. Upgrading is one deploy plus one
-refresh; the migration is self-executing:
+Do not use a model-list HTTP 200 as the only inference check.
 
-1. **Deploy** (`./deploy.sh --metering`). The debit/interceptor/admin Lambdas
-   switch to the shared resolver immediately. Legacy rows keep pricing in the
-   deploy-to-first-refresh window: the resolver reads old per-token `PUBLISHED`
-   `tiers` shapes and per-token `OVERRIDE` rows in place.
-2. **Refresh** (console "Refresh from AWS", or wait for the daily schedule).
-   The refresher writes the model-id-keyed catalog, then garbage-collects the
-   legacy rows: display-token `PUBLISHED` keys the settle path can never read
-   are deleted unconditionally; `PROVIDER` and `DEFAULT` rows (retired source
-   tiers) are deleted; stale model-id rows are deleted only when all three
-   offer files fetched successfully. **Operator `OVERRIDE` rows and `_ALIAS`
-   bindings are never touched.**
-3. **Review the Unmatched queue** (console → Model pricing). Entries AWS
-   publishes a rate for but that no model id could be resolved to without
-   guessing land here (with their published rates); bind the ones you serve.
-4. **Announce the chargeback shift.** Settle now prices from AWS-published
-   rates instead of the retired estimate tiers, so per-model dollars move at
-   the deploy boundary (frontier Claude models drop 27-63%; some models gain
-   a real rate for the first time). Settled ledger rows are never rewritten;
-   tokens remain the cross-boundary invariant, and each row's
-   `price_map_version` records the offer version that priced it.
+## 5. Deploy the target
 
-Notes:
-- Overrides entered BEFORE the upgrade were per-token; they keep working
-  as-is. Overrides entered after are USD per 1M tokens (the console and
-  `PUT /pricing/{model}` validate the new unit).
-- `PRICE_MAP_VERSION` is gone from stack env/outputs; catalog freshness now
-  comes from `GET /config` → `pricing` (generation, counts, refreshed_at).
-- If the first refresh reports `partial: true`, an offer file was unreachable;
-  stored rates are kept and stale-row GC is skipped until a clean run.
+Set the reviewed digest in `.env`:
+
+```bash
+OPEN_WEBUI_IMAGE=ghcr.io/open-webui/open-webui@sha256:YOUR_TARGET_DIGEST
+```
+
+Run the supported path with every feature flag the deployment already uses:
+
+```bash
+./deploy.sh --profile YOUR_PROFILE --region us-east-1
+
+# Metering-enabled deployment:
+./deploy.sh --metering --profile YOUR_PROFILE --region us-east-1
+```
+
+If scheduled capability refresh is enabled, retain
+`ENABLE_MODEL_REFRESH=true` in `.env`. Omitting `--metering` de-wires capture
+and admission from newly synthesized Gateway/Compute resources even though an
+older Metering stack may remain.
+
+The script prints the selected image. Compare it to the approved digest before
+accepting the deployment. The ECS service uses a circuit breaker, healthy-host
+alarm, and bake time, but those controls detect deployment health—not every
+functional regression.
+
+## 6. Validate after deployment
+
+- [ ] CloudFormation and ECS deployment report complete/stable.
+- [ ] Running tasks use the approved image digest.
+- [ ] ALB targets remain healthy through the bake window.
+- [ ] Cognito login/logout and role/group mapping work.
+- [ ] The seeder reports success without blocking application startup.
+- [ ] Chat Completions lane lists and streams a response.
+- [ ] Responses lane lists and streams a response.
+- [ ] Claude discovery and Messages translation work in a region where Claude
+      is available.
+- [ ] Uploads, retrieval, WebSocket updates, and restart persistence work.
+- [ ] If metering is enabled: a representative request creates/settles usage,
+      pricing remains fresh, admin/self-service authorization works, and no new
+      DLQ/alarm condition appears.
+- [ ] Logs contain no new migration, auth, schema, or integration errors.
+
+Record the new digest and validation evidence in the change record.
+
+## 7. Roll back
+
+If the target is unhealthy, the deployment controls may return ECS to the prior
+task definition. For a regression discovered later, set the previously recorded
+digest in `.env` and run the same supported deployment command/feature flags.
+
+```bash
+OPEN_WEBUI_IMAGE=ghcr.io/open-webui/open-webui@sha256:PREVIOUS_DIGEST
+./deploy.sh --profile YOUR_PROFILE --region us-east-1
+# include --metering when applicable
+```
+
+Then repeat the validation checklist. If the prior application cannot use the
+new schema, do not repeatedly restart it against that database. Execute the
+predefined Aurora restore/replacement plan and preserve the failed environment
+for diagnosis if policy allows.
+
+## Capability refresh is a separate change
+
+An Open WebUI upgrade does not require a model-capability refresh. Keep image
+and model-menu changes separate when possible so failures have one cause.
+
+To update the checked-in snapshot deliberately:
+
+```bash
+aws sts get-caller-identity --profile YOUR_PROFILE
+python3 scripts/probe-model-capabilities.py \
+  --profile YOUR_PROFILE \
+  --region us-east-1 \
+  --out config/model-capabilities.json \
+  --yes
+
+git diff -- config/model-capabilities.json
+./deploy.sh --profile YOUR_PROFILE --region us-east-1
+```
+
+See the [gateway guide](GATEWAY_INTEGRATION_GUIDE.md#operating-the-model-catalog).
+
+## Historical metering migrations
+
+Older installations may predate the current pricing catalog or console GSIs.
+Their migration rationale and one-time procedures are preserved under the
+[historical plans index](plans/README.md). Treat those records as version-bound
+history: inspect the live table/schema and current CDK before applying a
+historical command.
+
+## Change-record minimum
+
+For each upgrade, retain:
+
+- old and new image digests;
+- upstream release link and reviewed integration changes;
+- database snapshot/restore identifiers;
+- enabled deployment flags;
+- test environment and results;
+- production/evaluation deployment result and alarms;
+- post-deploy lane and metering evidence; and
+- rollback decision/result, if used.

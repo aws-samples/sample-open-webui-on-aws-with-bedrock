@@ -3,54 +3,87 @@ Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 SPDX-License-Identifier: MIT-0
 -->
 
-# Metering Admin Console
+# Metering admin and self-service console
 
-The web operator surface for the opt-in metering module
-([`docs/METERING.md`](../docs/METERING.md)): monitor consumption, investigate
-users and teams, set quota policies, grant time-boxed overrides, reset
-counters, read the audit trail, and watch the module's own health — signed in
-with the same Cognito pool (and admin groups) the sample already uses.
+[Documentation home](../docs/README.md) · [Metering contract](../docs/METERING.md) ·
+[Safe screenshot specification](../docs/images/SCREENSHOT-SPEC.md)
 
-Architecture and decision record:
-[`docs/plans/metering-admin-console/01-DECISIONS.md`](../docs/plans/metering-admin-console/01-DECISIONS.md).
+This React/TypeScript/Cloudscape SPA is the browser surface for the opt-in
+metering module. `./deploy.sh --metering` builds it and packages it in the
+`OpenWebUI-Metering` stack; no additional console deployment command is needed.
 
-## Deploy
+## Authorization model
 
-Nothing extra — `./deploy.sh --metering` builds this app and ships it inside
-the `OpenWebUI-Metering` stack. The stack output `ConsoleUrl` is the address.
-Sign in with any pool user; members of an admin group (`admin`,
-`admins`, `webui-admins`) get the full console, everyone else gets a
-self-service "My usage" view.
+The deployed SPA uses authorization code + PKCE against a dedicated public app
+client in the existing Cognito user pool. It stores the OIDC session in browser
+`sessionStorage` and calls the admin API under the same CloudFront origin.
+
+- Any authenticated pool user can view **My usage** and their own ledger.
+- Members of `admin`, `admins`, or `webui-admins` can access users, teams,
+  policies, pricing, audit, health, subscriptions, and admin mutations.
+- The API Lambda enforces the same boundary; hidden navigation is not the
+  security control.
+- Self-targeted policy changes, overrides, and counter resets are rejected.
+
+Group policies/counters are advisory. A policy's `until` value is a cleanup
+marker, not automatic expiry; an operator must delete the policy when it ends.
+A counter reset does not rewrite ledger history or close estimates.
+
+## Deployed build
+
+From `console/`, the deploy script runs the locked install/build:
+
+```bash
+npm ci
+npm run build
+```
+
+The resulting `dist/` directory is generated and ignored. CDK fails synthesis
+for a metering deployment when the expected build output is absent.
 
 ## Local development
 
 ```bash
-cd console
 npm install
-npm run dev          # http://localhost:5173
+npm run dev
 ```
 
-Local dev needs a deployed metering stack to talk to. Copy
-`public/config.json` from a deployed site (or craft one):
+Local development requires a deployed non-production metering API and Cognito
+client configuration. Create `public/config.json` locally (it is not a
+committed deployment artifact) with the region, pool ID, console client ID,
+Managed Login domain, and `/api` base; proxy `/api` to the test HTTP API in
+`vite.config.ts`.
 
-```json
-{
-  "region": "<region>",
-  "userPoolId": "<pool id>",
-  "clientId": "<console client id — stack output ConsoleClientId>",
-  "cognitoDomain": "<managed login domain>",
-  "apiBase": "/api"
-}
+A localhost OIDC callback requires a temporary change to the **test** console
+app client. Record the existing callbacks, add
+`http://localhost:5173/auth/callback`, and restore the original set when the
+session ends. Do not make this change in an account you have not verified or in
+an environment where localhost callbacks are prohibited.
+
+## Pages
+
+| Route | Audience | Purpose |
+|---|---|---|
+| `/` | Admin | Monthly KPI/metric dashboard |
+| `/users`, `/users/:sub` | Admin | User counters, effective policy, ledger |
+| `/groups` | Admin | Advisory group rollups |
+| `/policies` | Admin | Default/user/advisory-group policies and cleanup markers |
+| `/pricing` | Admin | Published/override rates, aliases, unmatched rows, gateway coverage |
+| `/audit` | Admin | Mutation audit trail |
+| `/health` | Admin | Metrics, alarms, and SNS subscriptions |
+| `/me` | Any authenticated user | Own quota/usage/ledger |
+
+## Validation
+
+```bash
+npm run build
 ```
 
-and proxy `/api` to the deployed admin API's `api` stage in
-`vite.config.ts` (`server.proxy`), plus temporarily add
-`http://localhost:5173/auth/callback` to the console app client's callback
-URLs. None of this is required for the deployed path.
+For deployed behavior, test one ordinary user and a different admin. Confirm
+server-side 403 responses for admin routes, self-target mutation rejection,
+light/dark layout, pagination, empty/error/loading states, and no sensitive
+identifiers in screenshots.
 
-## Stack
-
-React 18 + TypeScript + Vite; [Cloudscape Design System](https://cloudscape.design)
-(Apache-2.0); `react-oidc-context`/`oidc-client-ts` (authorization-code +
-PKCE against the pool's Managed Login). The build ships as a private-S3 +
-CloudFront static site with the admin API mounted same-origin under `/api`.
+Historical UI decisions are indexed under
+[`../docs/plans/README.md`](../docs/plans/README.md); current behavior belongs
+in [`../docs/METERING.md`](../docs/METERING.md).

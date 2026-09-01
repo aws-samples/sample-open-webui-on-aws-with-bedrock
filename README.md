@@ -1,212 +1,193 @@
 # Open WebUI on AWS with Amazon Bedrock
 
-Deploy [Open WebUI](https://github.com/open-webui/open-webui) on AWS (Amazon ECS
-on Fargate) and connect it to Amazon Bedrock models through an **Amazon Bedrock
-AgentCore inference gateway** — an AWS deployment sample.
+[![License: MIT-0](https://img.shields.io/badge/License-MIT--0-blue.svg)](LICENSE)
+[![Infrastructure: AWS CDK v2](https://img.shields.io/badge/Infrastructure-AWS%20CDK%20v2-orange.svg)](infra/)
 
-> [!IMPORTANT]
-> **Sample code — not for production use.** This repository is provided for
-> demonstration and evaluation purposes. It has not been through an application
-> security review and is not suitable for production use as-is. Before deploying
-> it outside a test environment, run your own security review and threat model,
-> harden the defaults for your requirements, and test at your expected scale —
-> see [`DISCLAIMER.txt`](DISCLAIMER.txt) and
-> [Production Considerations](docs/AWS_DEPLOYMENT_GUIDE.md#production-considerations).
+Deploy the **unmodified official Open WebUI image** on Amazon ECS with AWS
+Fargate, then connect signed-in users to Amazon Bedrock through an **Amazon
+Bedrock AgentCore inference gateway**. The repository does not include, fork,
+patch, or build Open WebUI; it supplies AWS infrastructure and runtime
+configuration around that separately licensed application.
 
-> **About the application.** This is a deployment sample for the third-party
-> Open WebUI project by Open WebUI Inc. Open WebUI is **not included in this
-> repository** and is licensed separately under the Open WebUI License (see
-> [`NOTICE`](NOTICE) and [`THIRD-PARTY-LICENSES.md`](THIRD-PARTY-LICENSES.md)).
->
-> The deployed container is the **completely unmodified official Open WebUI
-> image**, pulled from `ghcr.io/open-webui/open-webui` at deploy time. There is
-> **no fork, no patches, and no image build**. By default a deploy runs the
-> **latest official Open WebUI release**, resolved to an immutable digest at
-> deploy time; set `OPEN_WEBUI_IMAGE` in `.env` to pin a specific release tag
-> or digest instead (see
-> [`docs/UPGRADE_RUNBOOK.md`](docs/UPGRADE_RUNBOOK.md)). The Amazon Bedrock
-> integration is delivered entirely as AWS infrastructure + runtime
-> configuration:
->
-> 1. an **AgentCore inference gateway** that fronts Amazon Bedrock's
->    OpenAI-compatible endpoint, authenticated per-user via Amazon Cognito; and
-> 2. a small Open WebUI **pipe function** for Anthropic Claude models (which are
->    Messages-API-only on Bedrock), plus two native OpenAI connections — all
->    seeded into the app database at container start.
->
-> Everything AWS-authored lives under [`infra/`](infra/) (CDK), [`gateway/`](gateway/)
-> (interceptor + provisioner Lambdas), [`pipe/`](pipe/) (the Claude pipe + seeder),
-> [`config/`](config/), [`scripts/`](scripts/), and [`docs/`](docs/).
+## Why this sample is different
 
-Run **v0.10.2 or newer** (the default — the latest release — always satisfies
-this): that release contains upstream security and access-control fixes.
-[`docs/UPGRADE_RUNBOOK.md`](docs/UPGRADE_RUNBOOK.md) covers how version
-selection, upgrades, and rollback work.
+| Capability | What the sample demonstrates |
+|---|---|
+| **A user-aware inference boundary** | Open WebUI sends the signed-in user's Cognito access token to AgentCore. The gateway validates that JWT, then invokes the Bedrock-compatible endpoint with its own IAM role—no static model API key in the application. |
+| **One model menu, three API lanes** | Two native OpenAI connections serve Chat Completions and Responses. A manifold pipe translates Claude requests to Anthropic Messages. A probed capability snapshot filters the native model lists so API-incompatible choices are not offered by those connections. |
+| **Optional consumption governance** | `./deploy.sh --metering` adds pre-request per-user USD/RPM checks, usage settlement into a DynamoDB ledger, Bedrock Project headers for team attribution, live pricing coverage, alarms, and a Cloudscape admin/self-service console. The module is off by default. |
 
-## Why a gateway?
+> [!CAUTION]
+> **This is sample code for demonstration and evaluation—not a production
+> deployment.** It has not been through an application security review. Before
+> using it outside a test environment, perform your own security review and
+> threat model, harden it for your requirements, test failure modes and scale,
+> and review the [production considerations](docs/AWS_DEPLOYMENT_GUIDE.md#production-considerations)
+> and [`DISCLAIMER.txt`](DISCLAIMER.txt).
 
-Amazon Bedrock exposes an OpenAI-compatible endpoint (`bedrock-mantle`) that
-Open WebUI can talk to natively — but with two wrinkles this sample solves:
+![Architecture flow from a user and Cognito through CloudFront, private Open WebUI on Fargate, an AgentCore gateway, Amazon Bedrock, and optional metering services.](docs/images/architecture-light.svg#gh-light-mode-only)
+![Architecture flow from a user and Cognito through CloudFront, private Open WebUI on Fargate, an AgentCore gateway, Amazon Bedrock, and optional metering services.](docs/images/architecture-dark.svg#gh-dark-mode-only)
 
-- **Per-user identity & governance.** The AgentCore gateway accepts the
-  logged-in user's own Cognito OAuth token (Open WebUI's `system_oauth`
-  connection auth). Every model call reaches Bedrock **as that user**, ready for
-  [Amazon Bedrock AgentCore Policy](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy.html)
-  (Cedar), Guardrails, and per-user throttling — with no static API keys.
-- **Only-working-models.** Bedrock models don't all support the same API
-  (Anthropic Claude is Messages-only; the GPT-5.x family is Responses-only;
-  most others are Chat Completions). A gateway interceptor filters the model
-  listing per connection so Open WebUI **only ever surfaces models that
-  actually work** — nothing that would error when a user picks it.
+**Jump to:** [Quick start](#quick-start) · [Gateway design](#the-gateway-path) ·
+[Consumption governance](#optional-consumption-governance) ·
+[Documentation](#documentation) · [Costs](docs/COSTS.md)
 
-The result: one governed endpoint, three lanes, every compatible Bedrock model
-functional in the Open WebUI dropdown with per-user identity end to end.
+## What gets deployed
 
-## Architecture
+The base deployment creates five CDK stacks:
 
-```
-                            End users
-                                │ HTTPS
-                        ┌───────▼────────┐
-                        │   CloudFront    │
-                        └───────┬────────┘
-                                │ VPC origin
-┌───────────────────────────────┼──────────────────────────────────────────┐
-│ VPC (private subnets)          │                                          │
-│                        ┌───────▼────────┐                                 │
-│                        │  Internal ALB   │                                 │
-│                        └───────┬────────┘                                 │
-│                    ┌───────────▼───────────┐    ┌────────────────────┐    │
-│                    │  ECS Fargate            │    │  Aurora PostgreSQL  │    │
-│                    │  UNMODIFIED official     │◄──►│  (pgvector)         │    │
-│                    │  Open WebUI image        │    └────────────────────┘    │
-│                    │  + Claude pipe +        │    ┌────────────────────┐    │
-│                    │    2 OpenAI connections │◄──►│  ElastiCache Redis  │    │
-│                    └───────┬─────────────────┘    └────────────────────┘    │
-└────────────────────────────┼──────────────────────────────────────────────┘
-   user's OAuth token (system_oauth) │ per-user JWT
-                    ┌────────────────▼───────────────┐
-                    │  AgentCore inference gateway     │  CUSTOM_JWT (Cognito)
-                    │  • REQUEST interceptor:          │  + models-filter Lambda
-                    │    capability-filtered listing   │
-                    │  • bedrock-mantle target         │  GATEWAY_IAM_ROLE (SigV4)
-                    └────────────────┬─────────────────┘
-                    ┌────────────────▼───────────────┐
-                    │  Amazon Bedrock (bedrock-mantle) │
-                    └──────────────────────────────────┘
-```
+- **Network** — a VPC, public/private subnets, NAT gateways, security groups, and
+  selected VPC endpoints.
+- **Data** — Aurora PostgreSQL Serverless v2 with pgvector, ElastiCache Redis,
+  and an S3 upload bucket.
+- **Auth** — a Cognito user pool, Managed Login domain, OAuth app client, and
+  role-mapping groups.
+- **Gateway** — the AgentCore gateway, Cognito JWT authorizer, REQUEST
+  interceptor, and `bedrock-mantle` inference target.
+- **Compute** — CloudFront, a VPC origin, an internal Application Load Balancer,
+  and Fargate tasks running the official Open WebUI image.
 
-The user's identity flows Cognito → gateway → Bedrock the whole way. See
-[`docs/GATEWAY_INTEGRATION_GUIDE.md`](docs/GATEWAY_INTEGRATION_GUIDE.md) for the
-full design.
-
-## The three model lanes
-
-All three are seeded automatically at container start
-([`pipe/seed.py`](pipe/seed.py)); all authenticate with the user's own OAuth
-token through the one gateway.
-
-| Lane | How it's wired | Models it serves |
-|---|---|---|
-| **Chat Completions** | native OpenAI connection (`system_oauth`), interceptor flavor `chat_completions` | the majority — Qwen, DeepSeek, Mistral, gpt-oss, Gemma, etc. |
-| **Responses** | native OpenAI connection (`system_oauth`, `api_type: responses`) | the Responses-only family (e.g. GPT-5.x) + gpt-oss |
-| **Messages (Claude)** | the [`pipe/gateway_anthropic_pipe.py`](pipe/gateway_anthropic_pipe.py) manifold pipe | Anthropic Claude (Messages-API-only on Bedrock) |
-
-Which model ids fall in each lane is data, not code:
-[`config/model-capabilities.json`](config/model-capabilities.json), regenerated
-with [`scripts/probe-model-capabilities.py`](scripts/probe-model-capabilities.py).
-
-## Prerequisites
-
-- An AWS account with **Amazon Bedrock model access** enabled for the models you
-  want ([Bedrock console → Model access](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html)).
-- **AWS CLI v2**, **Node.js 20+**, **npm**, and **python3 + pip** (used by
-  `deploy.sh` for image-version resolution and Lambda dependency vendoring).
-  No Docker — there is no image build.
-- CDK bootstrapped in your target account/region (`npx cdk bootstrap`), or let
-  `deploy.sh` do it.
-- A region where both Amazon Bedrock (`bedrock-mantle`) and CloudFront VPC
-  origins are available. **Model availability on `bedrock-mantle` is
-  region-dependent** — notably Anthropic Claude (the Messages lane) is offered
-  in **`us-east-1`** (and partially `us-west-2`) but **not `us-east-2`** as of
-  2026-07. Deploy to **`us-east-1`** for the full three-lane experience; other
-  regions serve whatever their `bedrock-mantle` catalog includes. Regenerate
-  [`config/model-capabilities.json`](config/model-capabilities.json) for your
-  region with [`scripts/probe-model-capabilities.py`](scripts/probe-model-capabilities.py).
+`./deploy.sh --metering` adds a sixth stack and metering integrations in the
+Gateway and Compute stacks. The base deployment remains the default.
 
 ## Quick start
+
+### Prerequisites
+
+- An AWS account and credentials authorized to create the resources above.
+- AWS CLI v2, Node.js 20 or newer, npm, and Python 3 with pip.
+- A target region that supports the required AgentCore, Bedrock, CloudFront VPC
+  origin, database, and container services. `us-east-1` is the documented
+  default for the full three-lane experience; service and model availability
+  changes, so verify it for your account and region.
+- Access to the Bedrock models you intend to test.
+
+Docker is not required because this repository builds no application image.
+
+### Deploy
 
 ```bash
 git clone https://github.com/aws-samples/sample-open-webui-on-aws-with-bedrock.git
 cd sample-open-webui-on-aws-with-bedrock
 
-cp .env.example .env      # review; no Bedrock vars needed (gateway handles it)
-./deploy.sh               # interactive: pick profile + region, then deploy
+cp .env.example .env
+./deploy.sh
 ```
 
-By default this deploys the **latest official Open WebUI release**, resolved to
-an immutable image digest at deploy time. To pin a version, set
-`OPEN_WEBUI_IMAGE` in `.env` to a release tag or `@sha256:` digest (see
-[`docs/UPGRADE_RUNBOOK.md`](docs/UPGRADE_RUNBOOK.md)).
+The script prompts for an AWS profile and region, bootstraps CDK when needed,
+resolves the selected official Open WebUI release to an image digest, deploys
+the stacks, reconciles Cognito callback URLs and secrets, and prints the
+application URL. For a non-interactive deployment:
 
-`deploy.sh` deploys five CDK stacks (Network → Data → Auth → Gateway → Compute),
-then prints the CloudFront URL. First deploy takes ~25–35 min (Aurora + Redis +
-CloudFront are the long poles). Then:
-
-1. Open the CloudFront URL and sign in with **Amazon Cognito** (create a user in
-   the Cognito console first, or enable self-signup — see the deployment guide).
-   The **first** user to sign in becomes the admin.
-2. The Bedrock models appear in the model dropdown within a minute of first
-   admin sign-in (the seeder installs the pipe + connections on that event).
-
-Full instructions — Cognito user setup, custom domains, model access control:
-[`docs/AWS_DEPLOYMENT_GUIDE.md`](docs/AWS_DEPLOYMENT_GUIDE.md).
-
-## Repository layout
-
-```
-infra/                     CDK app (TypeScript)
-  bin/app.ts               5 stacks: Network, Data, Auth, Gateway, Compute
-  lib/gateway-stack.ts     AgentCore gateway + interceptor + inference target
-  lib/compute-stack.ts     ECS Fargate running the unmodified official image
-  lib/{network,data,auth}-stack.ts
-gateway/
-  interceptor/index.py     REQUEST interceptor: capability-filtered model listing
-  provisioner/index.py     custom resource: creates the bedrock-mantle inference target
-  refresher/index.py       opt-in scheduled model refresher (enableModelRefresh)
-  refresher/probe_core.py  shared probe logic (used by the CLI + the refresher)
-pipe/
-  gateway_anthropic_pipe.py  Claude manifold pipe (per-user OAuth to the gateway)
-  seed.py                    installs the pipe + 2 OpenAI connections at boot
-config/model-capabilities.json   which models work on which API (interceptor input)
-scripts/probe-model-capabilities.py   regenerate the capability matrix
-deploy.sh                  one-command deploy
-docs/                      deployment, gateway integration, upgrade, cost
+```bash
+./deploy.sh --profile YOUR_PROFILE --region us-east-1 --yes
 ```
 
-## Cost
+After deployment, register a test user in the Cognito user pool and add the
+initial operator to the `admin` group before signing in. The startup seeder
+waits for the Open WebUI schema, then installs the two native gateway
+connections and the Claude manifold pipe; it does not depend on a first-admin
+login event.
 
-Infrastructure (VPC/ALB/ECS/Aurora/Redis/CloudFront/gateway/Lambdas) is a small
-fixed monthly cost; the dominant driver is Bedrock token consumption, which is
-pay-per-use. See [`docs/COST_ANALYSIS_20K_USERS.md`](docs/COST_ANALYSIS_20K_USERS.md).
+For prerequisites, configuration, validation, troubleshooting, and cleanup,
+follow the [deployment guide](docs/AWS_DEPLOYMENT_GUIDE.md).
 
-**Optional metering module** (`./deploy.sh --metering`, off by default): per-user
-token/dollar metering, per-team cost attribution via Bedrock Projects,
-operator-set quotas enforced at the gateway (blocked users see the reason in
-the chat), and a standalone **admin web console** (stack output `ConsoleUrl`)
-for monitoring consumption and managing quotas — signed in with the same
-Cognito pool and admin groups as Open WebUI itself. When disabled, the base
-sample is byte-identical. See [`docs/METERING.md`](docs/METERING.md).
+## The gateway path
 
-## Security
+The identity boundary is deliberate:
 
-Private ALB (CloudFront-only ingress via VPC origin), all compute/data in
-private subnets, TLS in transit, encryption at rest, secrets in AWS Secrets
-Manager, Cognito SSO, and per-user identity on every model call through the
-gateway. See the Security section of the deployment guide.
+1. Cognito authenticates the user and Open WebUI retains the OAuth session.
+2. Each model request carries that user's access token to AgentCore.
+3. AgentCore validates the token against the Cognito user pool and app client.
+4. The gateway execution role signs the outbound request to `bedrock-mantle`.
 
-## License
+The user is identifiable **at the gateway**; Amazon Bedrock is not invoked as a
+per-user IAM principal. The three runtime-seeded lanes are:
 
-This sample is licensed under **MIT-0** (see [`LICENSE`](LICENSE)). The Open
-WebUI application it deploys is a separate third-party project under its own
-license — see [`NOTICE`](NOTICE) and [`THIRD-PARTY-LICENSES.md`](THIRD-PARTY-LICENSES.md).
+| Lane | Open WebUI integration | Model discovery |
+|---|---|---|
+| Chat Completions | Native OpenAI connection, `system_oauth` | REQUEST interceptor returns the `chat_completions` list from the probed snapshot. |
+| Responses | Native OpenAI Responses connection, `system_oauth` | REQUEST interceptor returns the `responses` list from the probed snapshot. |
+| Anthropic Messages | Claude manifold pipe with OpenAI↔Messages translation | Pipe performs a read-only, task-role-signed Mantle catalog lookup and keeps available `anthropic.*` models. |
+
+The checked-in [`config/model-capabilities.json`](config/model-capabilities.json)
+is a dated region/account snapshot, not a permanent availability promise.
+Regenerate it for the deployment context or enable the opt-in scheduled
+refresher. See the [gateway integration guide](docs/GATEWAY_INTEGRATION_GUIDE.md)
+for request paths, identity semantics, source ownership, and limitations.
+
+## Optional consumption governance
+
+Enable the module with:
+
+```bash
+./deploy.sh --metering
+```
+
+The module makes consumption visible and actionable without modifying Open
+WebUI:
+
+- the gateway interceptor reads a per-user monthly USD counter/policy and RPM
+  bucket before inference, records a conservative estimate, and emits an
+  OpenAI-shaped 429 when an already-recorded limit is exceeded in ENFORCE mode;
+- a seeded global filter captures persisted provider usage and sends it through
+  EventBridge to an idempotent settlement path;
+- DynamoDB stores reservations, the append-only usage ledger, counters,
+  policies, audit records, pricing, and the gateway↔pricing coverage join;
+- Bedrock Project/workspace headers provide a best-effort team-attribution path
+  when project tags are activated for billing;
+- a separate Cognito/PKCE Cloudscape console gives all users their own usage
+  view and gives admin-group members governance controls; and
+- pricing, canary, recovery, reconciliation, dashboard, alarm, and SNS paths
+  make important gaps observable.
+
+This is an **availability-first** design, not an exact billing boundary. It
+enforces USD and request-rate policies—not monthly token quotas or group
+quotas. Concurrent requests can cross a limit before the next-request block;
+unpriced requests remain available and record $0 until a rate is resolved;
+and the default sweeper refunds reservations that never settle. Read the
+[governance contract and operator guide](docs/METERING.md) before enabling it.
+
+## Important constraints
+
+- **Third-party application:** Open WebUI is developed and licensed separately.
+  AWS does not maintain or support it. Review [`NOTICE`](NOTICE) and
+  [`THIRD-PARTY-LICENSES.md`](THIRD-PARTY-LICENSES.md).
+- **No image build:** the supported deploy path selects an official Open WebUI
+  release and normally resolves it to an immutable digest. Registry-resolution
+  failure and custom image overrides have different guarantees; see the
+  [upgrade runbook](docs/UPGRADE_RUNBOOK.md).
+- **Region-specific models:** the native lane lists must match the deployment
+  account and region. The scheduled capability refresher is off by default.
+- **Network boundary:** viewers use HTTPS to CloudFront. CloudFront uses an HTTP
+  VPC-origin hop to the internal ALB, and the ALB uses HTTP to the task. The
+  application and data tier are private, but managed-service and registry
+  traffic is not represented as VPC-only.
+- **Retained data:** some stateful resources are retained during stack removal
+  and can continue billing until explicitly handled. Read cleanup instructions
+  before deploying.
+- **Variable cost:** model usage, NAT processing, database capacity, logs,
+  transfer, and optional metering resources vary by region and workload. Use
+  the [cost-planning guide](docs/COSTS.md), not a static monthly estimate.
+
+## Documentation
+
+Start at the [documentation home](docs/README.md), or choose a path:
+
+| Goal | Read |
+|---|---|
+| Decide whether the architecture fits | [Gateway integration guide](docs/GATEWAY_INTEGRATION_GUIDE.md) and [cost planning](docs/COSTS.md) |
+| Deploy, validate, operate, or remove it | [AWS deployment guide](docs/AWS_DEPLOYMENT_GUIDE.md) |
+| Evaluate or operate consumption governance | [Metering and quota guide](docs/METERING.md) |
+| Change or roll back the upstream image | [Upgrade runbook](docs/UPGRADE_RUNBOOK.md) |
+| Work on the implementation | [`infra/README.md`](infra/README.md), [`pipe/README.md`](pipe/README.md), and [`console/README.md`](console/README.md) |
+| Understand past decisions | [Historical plans](docs/plans/README.md), [reviews](docs/reviews/README.md), and [captured learnings](docs/solutions/README.md) |
+
+## Contributing, security, and license
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) before proposing changes and
+[`SECURITY.md`](SECURITY.md) for vulnerability reporting.
+
+This sample is licensed under [MIT-0](LICENSE). Open WebUI and the dependency
+trees retain their own licenses and notices; see
+[`THIRD-PARTY-LICENSES.md`](THIRD-PARTY-LICENSES.md).

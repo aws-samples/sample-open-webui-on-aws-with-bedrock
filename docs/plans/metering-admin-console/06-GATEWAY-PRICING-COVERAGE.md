@@ -12,7 +12,7 @@ unpriced-but-invokable a first-class alarmed condition, simplifies the pricing
 package against live-data evidence, and reconciles the docs.
 
 Design date: 2026-08-21. All numbers below were measured live on 2026-08-20/21
-against account `511884928131`, us-east-1, table `open-webui-metering`
+against account `TEST_ACCOUNT_ID`, us-east-1, table `open-webui-metering`
 (evidence: session artifacts; re-derivable via `scripts/diagnose-model-pricing.py`
 after this change).
 

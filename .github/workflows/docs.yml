@@ -1,0 +1,39 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+name: Documentation integrity
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integrity:
+    name: Check links, assets, and drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+
+      - name: Check documentation integrity
+        run: node scripts/docs-integrity.mjs
+
+      - name: Check runtime documentation drift on pull requests
+        if: github.event_name == 'pull_request'
+        run: node scripts/docs-check.mjs "${{ github.event.pull_request.base.sha }}" --strict
+
+      - name: Check runtime documentation drift on main
+        if: github.event_name == 'push'
+        run: node scripts/docs-check.mjs "${{ github.event.before }}" --strict

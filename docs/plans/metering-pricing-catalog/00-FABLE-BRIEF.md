@@ -365,13 +365,13 @@ you produced from a tool result in this session, not one you inherited.
 
 ## Environment and permissions
 
-- AWS profile `test-web-app`, account `511884928131`, region `us-east-1`. Session
+- AWS profile `test-web-app`, account `TEST_ACCOUNT_ID`, region `us-east-1`. Session
   is valid for ~12 hours; if it expires, stop and say so rather than leaving a
   deploy half-applied.
 - This is a **dev/test environment with disposable data.** You may deploy, run the
   pricing refresher, invoke models, and write DynamoDB pricing rows freely. Aurora
   data is disposable.
-- Live app: `https://dajaqxu4gb1m.cloudfront.net`. Admin API and console are the
+- Live app: `https://REDACTED_TEST_APP_HOST`. Admin API and console are the
   metering operator surface.
 - **Deploy with the correct context or you will destroy live resources:**
   `ENABLE_MODEL_REFRESH=true ./deploy.sh --metering --profile test-web-app`

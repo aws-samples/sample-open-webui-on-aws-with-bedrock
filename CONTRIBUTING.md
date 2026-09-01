@@ -1,57 +1,103 @@
-# Contributing Guidelines
+# Contributing guidelines
 
-Thank you for your interest in contributing to our project. Whether it's a bug report, new feature, correction, or additional
-documentation, we greatly value feedback and contributions from our community.
+Thank you for contributing fixes, documentation, tests, or focused features.
+Open WebUI itself is a separate upstream project: this repository deploys its
+official image but does not vendor, fork, or patch it. Send upstream application
+changes to the [Open WebUI repository](https://github.com/open-webui/open-webui).
 
-Please read through this document before submitting any issues or pull requests to ensure we have all the necessary
-information to effectively respond to your bug report or contribution.
+## Before opening work
 
-## Reporting Bugs/Feature Requests
+- Search existing open and recently closed issues and pull requests.
+- Open an issue before a significant architecture, dependency, security, or
+  behavior change so scope and ownership are clear.
+- Work from current `main` and keep the pull request focused. Avoid unrelated
+  formatting or generated-file churn.
+- Never commit `.env`, credentials, tokens, deployment identifiers, customer
+  data, real user details, or private screenshots.
 
-We welcome you to use the GitHub issue tracker to report bugs or suggest features.
+GitHub documents how to [fork a repository](https://docs.github.com/en/get-started/quickstart/fork-a-repo)
+and [create a pull request](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/proposing-changes-to-your-work-with-pull-requests/creating-a-pull-request).
 
-When filing an issue, please check existing open, or recently closed, issues to make sure somebody else hasn't already
-reported the issue. Please try to include as much information as you can. Details like these are incredibly useful:
+## Validate the affected area
 
-* A reproducible test case or series of steps
-* The version of our code being used
-* Any modifications you've made relevant to the bug
-* Anything unusual about your environment or deployment
+Run the smallest relevant checks during development and the complete affected
+set before opening a pull request.
 
-## Contributing via Pull Requests
+### Documentation and assets
 
-Contributions via pull requests are much appreciated. Before sending us a pull request, please ensure that:
+```bash
+node scripts/docs-integrity.mjs
+node scripts/docs-check.mjs
+```
 
-1. You are working against the latest source on the *main* branch.
-2. You check existing open, and recently merged, pull requests to make sure someone else hasn't addressed the problem already.
-3. You open an issue to discuss any significant work - we would hate for your time to be wasted.
+If diagram source changes, regenerate and recheck it:
 
-To send us a pull request, please:
+```bash
+node scripts/render-doc-diagrams.mjs
+node scripts/docs-integrity.mjs
+```
 
-1. Fork the repository.
-2. Modify the source; please focus on the specific change you are contributing. If you also reformat all the code, it will be hard for us to focus on your change.
-3. Ensure local tests pass.
-4. Commit to your fork using clear commit messages.
-5. Send us a pull request, answering any default questions in the pull request interface.
-6. Pay attention to any automated CI failures reported in the pull request, and stay involved in the conversation.
+Inspect light and dark output, provide meaningful alt text, keep assets small,
+and follow [`docs/images/SCREENSHOT-SPEC.md`](docs/images/SCREENSHOT-SPEC.md)
+for any authenticated UI capture.
 
-GitHub provides additional document on [forking a repository](https://help.github.com/articles/fork-a-repo/) and
-[creating a pull request](https://help.github.com/articles/creating-a-pull-request/).
+### Metering Python
 
-## Finding contributions to work on
+```bash
+python3 -m pytest metering/tests -q
+```
 
-Looking at the existing issues is a great way to find something to contribute on. As our projects, by default, use the default GitHub issue labels (enhancement/bug/duplicate/help wanted/invalid/question/wontfix), looking at any 'help wanted' issues is a great place to start.
+### CDK infrastructure
 
-## Code of Conduct
+```bash
+cd infra
+npm install
+npm run build
+npx tsc --noEmit
+npx cdk synth --quiet
+```
+
+Run `npx cdk diff` only with an account/profile you have independently verified.
+Do not deploy resources merely to make a contribution check pass.
+
+### Metering console
+
+```bash
+cd console
+npm install
+npm run build
+```
+
+### Deployment script
+
+```bash
+bash -n deploy.sh
+```
+
+## Pull-request expectations
+
+- Explain the user/operator value and any compatibility or migration impact.
+- Include tests for behavior changes where a practical seam exists.
+- Update the guide that owns changed behavior rather than duplicating prose.
+- Preserve the metering-off default and unmodified-upstream-image boundary.
+- Preserve copyright and SPDX headers on authored source files.
+- Use inclusive language and accessible images/tables.
+- Respond to the repository's read-only documentation workflow and reviewer
+  findings without bypassing checks.
+
+## Code of conduct
 
 This project has adopted the [Amazon Open Source Code of Conduct](https://aws.github.io/code-of-conduct).
-For more information see the [Code of Conduct FAQ](https://aws.github.io/code-of-conduct-faq) or contact
-opensource-codeofconduct@amazon.com with any additional questions or comments.
+See the [Code of Conduct FAQ](https://aws.github.io/code-of-conduct-faq) or
+contact opensource-codeofconduct@amazon.com with questions.
 
-## Security issue notifications
+## Security issues
 
-If you discover a potential security issue in this project we ask that you notify AWS/Amazon Security via our [vulnerability reporting page](http://aws.amazon.com/security/vulnerability-reporting/). Please do **not** create a public github issue.
+Do not report a potential vulnerability in a public GitHub issue. Follow
+[`SECURITY.md`](SECURITY.md).
 
 ## Licensing
 
-See the [LICENSE](LICENSE) file for our project's licensing. We will ask you to confirm the licensing of your contribution.
+Contributions are accepted under the repository's [MIT-0 license](LICENSE).
+Confirm that new dependencies/assets can be redistributed and update
+[`THIRD-PARTY-LICENSES.md`](THIRD-PARTY-LICENSES.md) when required.

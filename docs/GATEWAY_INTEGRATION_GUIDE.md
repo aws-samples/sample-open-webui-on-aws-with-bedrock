@@ -1,240 +1,248 @@
-# Bedrock Gateway Integration Guide
+# Gateway integration and architecture
 
-How this sample connects the unmodified official Open WebUI image to Amazon
-Bedrock through an Amazon Bedrock AgentCore **inference gateway**, with per-user
-identity and capability-filtered model listings.
+[Documentation home](README.md) · [Deployment guide](AWS_DEPLOYMENT_GUIDE.md) ·
+[Metering guide](METERING.md)
 
-## The problem this solves
+This guide owns the current architecture, identity boundary, three model lanes,
+and model-capability lifecycle for the sample. Open WebUI remains an unmodified
+third-party image; the repository adds the Bedrock integration through AWS
+infrastructure and runtime-seeded configuration.
 
-Amazon Bedrock offers an OpenAI-compatible endpoint, **`bedrock-mantle`**
-(`https://bedrock-mantle.<region>.api.aws`), which Open WebUI's built-in OpenAI
-connections can call. Two realities shape the design:
+## What the gateway solves
 
-1. **Not every model supports every API.** On `bedrock-mantle`:
-   - Most models (Qwen, DeepSeek, Mistral, gpt-oss, Gemma, …) support **Chat
-     Completions** (`/v1/chat/completions`).
-   - The GPT-5.x family supports **Responses** only (`/v1/responses`).
-   - **Anthropic Claude** supports the **Anthropic Messages** API only
-     (`/anthropic/v1/messages`) — it returns HTTP 400 on Chat Completions and
-     Responses.
+Open WebUI can use OpenAI-compatible connections, but a useful Bedrock model
+menu needs two additional controls:
 
-   A model list that ignores this puts models in the dropdown that fail the
-   moment a user selects them.
+1. **A caller boundary.** Native connections and the Claude pipe send the
+   signed-in user's Cognito access token to an AgentCore inference gateway. The
+   gateway validates the JWT before the request reaches its target.
+2. **API-aware model discovery.** Models exposed through the Mantle catalog do
+   not all accept the same request API. The sample separates Chat Completions,
+   Responses, and Anthropic Messages so a native connection does not advertise
+   a model from the wrong API family.
 
-2. **Identity.** Calling `bedrock-mantle` directly from the app would use one
-   shared task-role identity for everyone. Routing through an AgentCore gateway
-   with a **CUSTOM_JWT** authorizer lets each request carry the **logged-in
-   user's own Cognito token**, so model traffic is attributable per user and
-   governable with AgentCore Policy / Guardrails.
+The gateway is not a per-user AWS credential broker. It authenticates and
+identifies the Cognito caller, then invokes Mantle with a shared gateway IAM
+role.
 
-## The shape
+## Canonical architecture
 
+![Architecture flow from a user and Cognito through CloudFront, private Open WebUI on Fargate, an AgentCore gateway, Amazon Bedrock, and optional metering services.](images/architecture-light.svg#gh-light-mode-only)
+![Architecture flow from a user and Cognito through CloudFront, private Open WebUI on Fargate, an AgentCore gateway, Amazon Bedrock, and optional metering services.](images/architecture-dark.svg#gh-dark-mode-only)
+
+The maintainable Mermaid source and regeneration commands live in
+[`diagrams/`](diagrams/README.md). This is the repository's single canonical
+system topology.
+
+### Request and trust boundaries
+
+1. The browser reaches CloudFront over HTTPS. CloudFront uses a VPC origin to
+   reach the internal ALB over HTTP; the ALB forwards HTTP to the Fargate task.
+2. Cognito Managed Login performs the authorization-code flow. Open WebUI's
+   built-in OIDC integration stores the user's OAuth session and synchronizes
+   supported Cognito group claims.
+3. At container start, the repository's seeder writes two native OpenAI
+   connections and one global Claude manifold pipe into the application
+   database. The official Open WebUI startup script still runs unchanged.
+4. A native connection or the Claude pipe sends the user's access token to the
+   AgentCore inference endpoint. The gateway's `CUSTOM_JWT` authorizer trusts
+   the deployment's Cognito discovery metadata and allowed app client.
+5. The gateway execution role signs the outbound Mantle request. This role—not
+   a Cognito user IAM principal—is the AWS caller at that boundary.
+6. The Claude pipe performs one material exception: its model-discovery hook has
+   no user context, so it signs a read-only direct Mantle catalog request with
+   the Fargate task role. Claude inference still uses the user's token through
+   the gateway unless an operator explicitly enables the shared-role fallback.
+7. Aurora PostgreSQL/pgvector, Redis, S3 uploads, and application secrets serve
+   the Fargate task from the private application/data tier. NAT and managed
+   service calls mean the entire data path is not VPC-only.
+
+## Identity matrix
+
+| Interaction | Identity presented | AWS identity used downstream | Notes |
+|---|---|---|---|
+| Browser sign-in | Cognito authorization-code session | Open WebUI application client | Cognito groups map to Open WebUI roles/groups. |
+| Native model inference | User's Cognito access token at AgentCore | Gateway execution role to Mantle | `system_oauth`; no static provider key. |
+| Claude inference | User's Cognito access token at AgentCore | Gateway execution role to Mantle | Pipe translates OpenAI-shaped input/output to Anthropic Messages. |
+| Claude model discovery | No user context | Fargate task role, signed directly to Mantle | Read/list only; bypasses the gateway interceptor. |
+| Claude `SIGV4_FALLBACK=true` | No user token required | Fargate task role, direct to Mantle | Off by default; loses per-user gateway attribution. |
+
+AgentCore Policy and Bedrock Guardrails are **not configured by this
+repository**. The JWT boundary is a place where an operator can design
+additional controls; it is not evidence that those controls already exist.
+
+## The three model lanes
+
+| Lane | Seeded integration | Request path | Discovery source |
+|---|---|---|---|
+| **Chat Completions** | Native connection prefix `gw`, `auth_type: system_oauth` | `/inference/v1/chat/completions` | Interceptor returns the `chat_completions` list selected by `x-models-flavor`. |
+| **Responses** | Native connection prefix `gwr`, `api_type: responses`, `system_oauth` | `/inference/v1/responses` | Interceptor returns the `responses` list selected by `x-models-flavor`. |
+| **Anthropic Messages** | Global `gateway_anthropic` manifold pipe | `/inference/v1/messages` | Pipe signs a direct `/v1/models` catalog read, keeps available `anthropic.*` IDs, and applies its optional exact-ID allowlist. |
+
+The checked-in `messages` array remains part of the capability snapshot used by
+probe/coverage tooling, but the current Claude pipe does **not** use the gateway
+model-list interceptor for discovery.
+
+### Runtime seeding
+
+[`pipe/seed.py`](../pipe/seed.py) waits for the required Open WebUI database
+tables, then:
+
+- upserts the Claude pipe as active and global;
+- inserts or reasserts the two native gateway connections; and
+- uses a `system` owner when no admin row exists yet.
+
+Seeding is tied to schema readiness, not to a first-user or first-admin sign-in
+event. It runs in the background and does not replace or patch upstream code.
+
+## Source ownership
+
+| Source | Responsibility |
+|---|---|
+| [`infra/lib/gateway-stack.ts`](../infra/lib/gateway-stack.ts) | AgentCore gateway, JWT authorizer, interceptor selection, IAM role, target custom resource, optional model refresher |
+| [`gateway/interceptor/index.py`](../gateway/interceptor/index.py) | Base native-lane model-list short circuit and request passthrough |
+| [`gateway/metering-interceptor/index.py`](../gateway/metering-interceptor/index.py) | Model listing plus optional quota admission, reservation, request mutation, and attribution headers |
+| [`gateway/provisioner/index.py`](../gateway/provisioner/index.py) | Inference-target create/update/delete lifecycle |
+| [`config/model-capabilities.json`](../config/model-capabilities.json) | Checked-in, dated lane snapshot for a specific probe context |
+| [`gateway/refresher/`](../gateway/refresher/) | Optional scheduled catalog probe, collapse guard, interceptor update, target refresh, and SNS diff |
+| [`pipe/seed.py`](../pipe/seed.py) | Idempotent installation of runtime connections and pipe |
+| [`pipe/gateway_anthropic_pipe.py`](../pipe/gateway_anthropic_pipe.py) | Claude discovery, OAuth lookup, Messages translation, invocation, streaming, tools, images, and usage normalization |
+
+## Native model listing
+
+For the two native connections, Open WebUI requests `.../v1/models` and includes
+an `x-models-flavor` header. The gateway invokes its global REQUEST interceptor.
+The interceptor matches the path, chooses the corresponding array, prefixes
+each ID with the target name (`bedrock/`), and short-circuits with an OpenAI
+model-list response. Other requests pass through in the base configuration.
+
+Path matching is intentional because the gateway event representation does not
+provide a dependable distinction for the original model-list method. Filtering
+at REQUEST also avoids buffering or rewriting streamed model responses.
+
+The snapshot narrows obvious API mismatches; it is not a permanent guarantee
+that every listed model will succeed. Account authorization, regional catalog
+changes, provider incidents, stale target routing, and probe heuristics can
+still affect a request.
+
+## Claude translation path
+
+The manifold pipe:
+
+- obtains the user's access token from Open WebUI's OAuth session manager;
+- translates system prompts, text/images, tool definitions, tool calls/results,
+  stop sequences, and supported generation parameters to Anthropic Messages;
+- routes both streaming and non-streaming responses back into OpenAI-shaped
+  objects Open WebUI understands; and
+- emits normalized token usage when the provider supplies it.
+
+By default, missing OAuth state returns an instruction to sign in with SSO.
+Enabling `SIGV4_FALLBACK` changes the trust and attribution model, so treat it
+as an explicit architecture decision rather than a login convenience.
+
+## Operating the model catalog
+
+### Manual snapshot refresh
+
+Use the deployment account/region credentials and write the reviewed result to
+the checked-in file:
+
+```bash
+aws sts get-caller-identity --profile YOUR_PROFILE
+python3 scripts/probe-model-capabilities.py \
+  --profile YOUR_PROFILE \
+  --region us-east-1 \
+  --out config/model-capabilities.json \
+  --yes
+
+git diff -- config/model-capabilities.json
+./deploy.sh --profile YOUR_PROFILE --region us-east-1
 ```
-Open WebUI (unmodified)                     AgentCore inference gateway
-─────────────────────────                   ──────────────────────────────
- connection "gw"   (system_oauth) ─┐         CUSTOM_JWT authorizer
-   api_type: chat/completions      │           trusts the Cognito user pool
-   header x-models-flavor:         │─ user's ─► REQUEST interceptor (Lambda)
-     chat_completions              │   JWT       • GET …/models → synthetic,
- connection "gwr"  (system_oauth) ─┤              capability-filtered list
-   api_type: responses            │              (by x-models-flavor)
-   header x-models-flavor:         │            • everything else passes through
-     responses                     │
- pipe "gateway_anthropic" ─────────┘         bedrock-mantle inference target
-   OpenAI↔Messages translation                 (GATEWAY_IAM_ROLE → SigV4)
-   header x-models-flavor: messages                    │
-                                                        ▼
-                                              Amazon Bedrock (bedrock-mantle)
+
+The probe tries the supported candidate API paths for every available Mantle
+catalog model. A successful response—or a timeout after request acceptance—is
+treated as lane support; an observed account gate excludes the model. That
+heuristic is useful evidence, not a service-level guarantee.
+
+### Scheduled refresh
+
+Set these in `.env` before a full deployment:
+
+```bash
+ENABLE_MODEL_REFRESH=true
+MODEL_REFRESH_RATE_HOURS=24
 ```
 
-Three Open WebUI "lanes", one gateway, one Bedrock endpoint. All three send the
-user's own OAuth token.
+Then run `./deploy.sh` with the deployment's usual flags. The opt-in refresher:
 
-## Components (this repo)
+1. probes the live Mantle catalog;
+2. refuses a suspicious collapse of a previously populated lane;
+3. updates the interceptor's served capability configuration;
+4. updates the target so connector routing can refresh; and
+5. publishes a lane diff to the `ModelRefreshTopicArn` SNS topic.
 
-### 1. The gateway — `infra/lib/gateway-stack.ts`
+It is off by default. A later CDK deployment starts from the checked-in snapshot,
+so commit intentional probe results even when live refresh is enabled.
 
-An `AWS::BedrockAgentCore::Gateway` (native CloudFormation resource) with:
+## Optional metering interceptor
 
-- **Inbound auth: `CUSTOM_JWT`** whose discovery URL is the deployment's Cognito
-  user pool and whose `AllowedClients` is the Open WebUI app client. The gateway
-  validates the user's Cognito access token on every call.
-- **Outbound auth: the gateway execution role** (`GATEWAY_IAM_ROLE`) signs
-  requests to `bedrock-mantle` with SigV4. The role holds `bedrock-mantle:*`
-  (note: `bedrock-mantle` is its own IAM service prefix — plain `bedrock:*` is
-  not sufficient for the OpenAI-compatible endpoint).
-- A **REQUEST interceptor** (see below).
+`./deploy.sh --metering` replaces the base models-only handler with the metering
+interceptor behind a versioned `live` alias and CodeDeploy canary. Model-list
+behavior remains, while inference paths add per-user admission checks,
+reservations, output clamps, and project/workspace headers. The rest of that
+contract—including availability-first exceptions—is owned by
+[`METERING.md`](METERING.md).
 
-The **inference target** (the `bedrock-mantle` connector) has no native
-CloudFormation resource yet, so it is created by a **custom resource** —
-`gateway/provisioner/index.py` — which calls
-`bedrock-agentcore-control:CreateGatewayTarget` /
-`DeleteGatewayTarget`. Models are addressed through the target as
-`bedrock/<model-id>` (e.g. `bedrock/openai.gpt-oss-20b`).
+## Constraints and non-claims
 
-### 2. The interceptor — `gateway/interceptor/index.py`
+- The gateway validates user identity, but the gateway IAM role invokes Mantle.
+- Native model lists are based on a snapshot or refresher output, not a live
+  per-request capability test.
+- Claude discovery is separate from native-lane listing and can surface a
+  discovery-error pseudo-model if its catalog request fails.
+- The checked-in snapshot is region/account specific; GatewayStack does not
+  reject a different deployment region automatically.
+- `SIGV4_FALLBACK` trades away per-user attribution and bypasses the gateway.
+- AgentCore Policy, Guardrails, and custom per-model authorization are not part
+  of the deployed default.
+- `bedrock-mantle:*` remains broad on the gateway execution role because the
+  connector's service authorization surface does not offer narrower resources
+  in this implementation.
+- Availability of AgentCore, Mantle APIs, and individual models changes. Verify
+  the target account and region rather than relying on model counts in prose.
 
-A REQUEST interceptor Lambda. When Open WebUI lists models
-(`GET /inference/v1/models`), the interceptor **short-circuits the request** and
-returns a synthetic list built from the capability matrix, choosing the list by
-the `x-models-flavor` request header the connection sends
-(`chat_completions` | `responses` | `messages`; default `chat_completions`).
-All other paths (chat/completions, responses, messages, streaming) pass through
-untouched.
+## Troubleshooting
 
-Notes learned in practice:
-- The gateway reports the interceptor `httpMethod` as `POST` even for the
-  `GET /v1/models` listing, so the Lambda matches on **path**, not method.
-- REQUEST short-circuit (not RESPONSE) is used because RESPONSE interceptors run
-  in buffered mode and are **not invoked on streaming responses** — filtering on
-  the request avoids interfering with chat/stream traffic entirely.
-- The capability lists come from the `MODEL_CAPS` env var, populated by the
-  stack from `config/model-capabilities.json`.
+### Native lane is empty
 
-### 3. The capability matrix — `config/model-capabilities.json`
+1. Confirm the seeder completed in `/ecs/open-webui` logs.
+2. Confirm `gw`/`gwr` connection rows exist in Open WebUI.
+3. Check that the expected IDs are in `config/model-capabilities.json` for the
+   target region/account.
+4. Inspect interceptor logs for the model-list path and flavor header.
 
-Which model ids work on which API — the interceptor's input, and the sample's
-single source of truth for lane membership:
+### Claude lane is empty or shows a discovery error
 
-```json
-{
-  "chat_completions": ["openai.gpt-oss-20b", "qwen.qwen3-32b", "..."],
-  "responses":        ["openai.gpt-5.5", "openai.gpt-oss-120b", "..."],
-  "messages":         ["anthropic.claude-haiku-4-5", "anthropic.claude-sonnet-5", "..."]
-}
-```
+The pipe reads Mantle directly with the Fargate task role for discovery. Check
+its task-role permissions, region, egress, and ECS logs. An empty result can be
+a valid regional catalog result.
 
-Regenerate for your region/account with
-[`scripts/probe-model-capabilities.py`](../scripts/probe-model-capabilities.py),
-which probes every `bedrock-mantle` model against each API and excludes any that
-are account-gated. Run it, commit the updated JSON, and redeploy the gateway
-stack to refresh the interceptor.
+### Model lists but invocation fails
 
-**Why the matrix comes from probing, not the model listing.** `bedrock-mantle`'s
-`/v1/models` carries no capability metadata — a model can be *listed* yet not
-*invocable* on any API Open WebUI drives. The probe classifies by actually
-invoking each model, and it encodes two facts that are easy to get wrong:
+A listed model can still be unavailable to the account or stale in connector
+routing. Run the probe in the deployment context, inspect the specific Mantle
+response, and either redeploy/update the target or remove the model from the
+snapshot until the discrepancy is understood.
 
-- **A lane is served on more than one path.** The OpenAI-branded families
-  (e.g. `gpt-5.x`) answer on `/openai/v1/*`, while the open-weight models
-  (`gpt-oss`, etc.) answer on the generic `/v1/*`. The probe tries **both** and
-  marks a model supported if either returns `200`; probing only `/v1/responses`
-  would return a literally-true but misleading *"does not support the
-  '/v1/responses' API"* for every `gpt-5.x` model. (The gateway connector
-  path-rewrites to whichever path a model needs — see below.)
-- **The account gate is not uniform across paths.** A model your account can't
-  use returns `401 "…not enabled for this account"` — but sometimes only on one
-  path while another returns `200`. The probe treats a gate on *any* path as
-  "exclude from every lane," because the gateway enforces the gate even where
-  the public endpoint doesn't.
+### User is told to sign in with SSO
 
-### 4. The Open WebUI wiring — `pipe/seed.py`
+The Claude pipe could not find a usable OAuth session and shared-role fallback
+is off. Sign in through Cognito. Enable fallback only if shared-role inference
+is acceptable for the deployment.
 
-At container start the seeder (running beside the unmodified image) waits for
-the app's DB migrations and the first admin sign-in, then idempotently installs:
+## Related guidance
 
-- **Two OpenAI connections**, both pointing at `…/inference/v1` with
-  `auth_type: system_oauth` and an `x-models-flavor` header:
-  - `gw` — Chat Completions lane.
-  - `gwr` — Responses lane (`api_type: responses`).
-- **The Claude pipe** function (`pipe/gateway_anthropic_pipe.py`), active +
-  global.
-
-Re-runs refresh the pipe code and (re)assert the connections only if absent, so
-admin edits to model visibility or valves survive redeploys.
-
-### 5. The Claude pipe — `pipe/gateway_anthropic_pipe.py`
-
-Open WebUI's native OpenAI connections speak Chat Completions/Responses, so they
-cannot drive Claude (Messages-only). This manifold pipe bridges the gap:
-
-- **Discovery** lists `bedrock-mantle` filtered to `anthropic.*` (the
-  Messages-only set). Pipe discovery runs with no user context in Open WebUI, so
-  this one call uses the task role (SigV4) — read-only listing, not inference.
-- **Invocation** translates OpenAI ↔ Anthropic Messages (system prompts, tool
-  use/results, images, `stop_sequences`, streaming, `thinking_delta` →
-  reasoning), and POSTs to the gateway `…/inference/v1/messages` as
-  `bedrock/<model>` with **the user's own OAuth token** as the bearer.
-- **Auth default: JWT only.** The `SIGV4_FALLBACK` valve is **off** by default —
-  a user with no OAuth session (e.g. a local-password login) gets a clear error
-  telling them to sign in with SSO. Turn the valve **on** to let such users fall
-  back to the task role (SigV4 direct to Bedrock), which works but loses
-  per-user attribution. This is deliberately opt-in.
-
-## How a request flows
-
-**Listing models** (dropdown): Open WebUI calls `GET …/inference/v1/models` on
-each connection with its `x-models-flavor` header → the interceptor returns the
-capability-verified list for that flavor → the dropdown shows only working
-models (the Claude pipe lists its own models separately, via discovery).
-
-**Chatting**:
-- Chat-Completions / Responses model → the matching native connection sends the
-  user's OAuth token to the gateway → `bedrock-mantle`.
-- Claude model → the pipe translates to Messages and sends the user's OAuth
-  token to the gateway → `bedrock-mantle`'s `/anthropic/v1/messages`.
-
-In every case the gateway validates the user's Cognito JWT (inbound) and signs
-to Bedrock with the gateway role (outbound).
-
-## Governance you can add
-
-Because inbound is CUSTOM_JWT with the real user identity, you can attach:
-
-- **[AgentCore Policy](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy.html)**
-  (Cedar) — deterministic allow/deny per user, group, or model.
-- **[Bedrock Guardrails](https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html)**
-  at the gateway — evaluated outside the app's context.
-- **Token-limit policies** on the gateway target — bound per-request cost.
-
-These are not enabled by default in this sample; the CUSTOM_JWT authorizer is
-the foundation that makes them per-user rather than per-app.
-
-## Operational notes
-
-- **Adding models over time — two things must happen, not one.** When
-  `bedrock-mantle` gains a model, making it usable in Open WebUI takes both a
-  **listing** refresh and a **routing** refresh:
-  1. **Listing** — the model won't appear in the dropdown until it's in the
-     interceptor's `MODEL_CAPS` (from `config/model-capabilities.json`). Re-run
-     the probe and redeploy the gateway stack (or use the refresher below).
-  2. **Routing — the connector caches its model map.** The `bedrock-mantle`
-     inference **connector snapshots its model/path map at target-creation time
-     and does not self-refresh.** A model added *after* your target was created
-     will *list* but return `400 "does not support…"` on selection, because the
-     connector still routes it to the wrong path. Force a **zero-downtime
-     re-snapshot** by re-`update`-ing the target with its identical config
-     (a no-op `UpdateGatewayTarget`) — after that, the new model routes. This is
-     the single most surprising gotcha in operating the gateway; budget for it.
-
-  **The opt-in refresher automates both.** Deploy with
-  `-c enableModelRefresh=true` (default **off**) and the gateway stack adds a
-  scheduled Lambda (`gateway/refresher/`) that, on a cadence
-  (`-c modelRefreshRateHours`, default 24):
-  - re-probes the live catalog (`probe_core`, shared with the CLI script),
-  - **collapse-guards** the result — if a populated lane shrinks below 50% (the
-    signature of a transient Mantle blip), it does **not** apply the change and
-    instead alerts, so a bad probe can never empty everyone's dropdown,
-  - writes the fresh `MODEL_CAPS` onto the interceptor Lambda (no gateway config
-    change needed to refresh the *listing*),
-  - **re-snapshots the connector** so newly-listed models actually *route*, and
-  - publishes a human-readable diff (`+model / -model` per lane) to an SNS topic
-    (`ModelRefreshTopicArn` output) — subscribe to see catalog shifts.
-
-  It's off by default to keep the base sample lean; when off, none of these
-  resources are created (the stack is byte-for-byte unchanged).
-- **Local-password users.** With `SIGV4_FALLBACK` off (default) they can't use
-  the gateway lanes without an OAuth session. Use Cognito SSO for all users, or
-  enable the fallback valve if you accept shared-identity model calls.
-- **Model access control** is unchanged from stock Open WebUI: Cognito groups
-  sync to Open WebUI groups; an admin sets model visibility per group in
-  **Workspace → Models**.
-- **Regions.** The gateway fronts `bedrock-mantle` in the deployment region;
-  `bedrock-mantle` availability is a subset of Bedrock regions — verify your
-  region before deploying. **Which models exist is region-dependent**, and the
-  Messages (Claude) lane is the most sensitive: verified 2026-07,
-  `us-east-1` offers 5 Claude models, `us-west-2` offers 1, and `us-east-2`
-  offers **none**. If the Claude lane shows no models, the pipe is working
-  correctly — that region's `bedrock-mantle` simply has no `anthropic.*` models.
-  Deploy to `us-east-1` for the full three-lane experience, and regenerate
-  `config/model-capabilities.json` per region.
+- [Deployment and troubleshooting](AWS_DEPLOYMENT_GUIDE.md)
+- [Consumption governance](METERING.md)
+- [Open WebUI upgrade runbook](UPGRADE_RUNBOOK.md)
+- [Cost planning](COSTS.md)

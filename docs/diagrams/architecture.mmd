@@ -1,0 +1,41 @@
+%% Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+%% SPDX-License-Identifier: MIT-0
+%% Canonical system architecture. Generated renderings live in docs/images/.
+%% Keep identity precise: AgentCore validates the user JWT; the gateway IAM
+%% role signs the outbound Mantle request.
+%%{init: {"flowchart": {"curve": "basis", "htmlLabels": true, "nodeSpacing": 46, "rankSpacing": 54}, "themeVariables": {"fontFamily": "Arial, sans-serif", "fontSize": "18px"}}}%%
+flowchart TB
+  user(["User browser"])
+  cognito["Amazon Cognito<br/>managed login and user pool"]
+  cloudfront["Amazon CloudFront<br/>viewer HTTPS · caching disabled"]
+
+  user -->|"HTTPS"| cloudfront
+  user <-->|"OIDC authorization code flow"| cognito
+
+  subgraph vpc["Amazon VPC — private application and data tier"]
+    direction LR
+    alb["Internal Application Load Balancer"]
+    owui["Amazon ECS on AWS Fargate<br/><b>unmodified official Open WebUI image</b><br/>runtime-seeded Chat · Responses · Claude lanes"]
+    data[("Aurora PostgreSQL + pgvector<br/>ElastiCache Redis")]
+    alb -->|"HTTP :8080"| owui
+    owui <--> data
+  end
+
+  cloudfront -->|"VPC origin over HTTP"| alb
+  cognito -.->|"OAuth token and group claims"| owui
+
+  services["Amazon S3 uploads · AWS Secrets Manager<br/><i>regional managed services reached through VPC endpoints</i>"]
+  services <--> |"Objects and application secrets"| owui
+
+  gateway["Amazon Bedrock AgentCore gateway<br/>CUSTOM_JWT user authorization<br/>capability-filtered REQUEST interceptor<br/>bedrock-mantle target"]
+  bedrock["Amazon Bedrock<br/>OpenAI-compatible and Messages APIs"]
+
+  owui -->|"Cognito bearer access token · three API lanes"| gateway
+  cognito -.->|"JWT trust metadata"| gateway
+  gateway -->|"Gateway IAM role · SigV4"| bedrock
+
+  governance["Optional consumption governance — off by default<br/>admission/reservation · usage settlement<br/>DynamoDB ledger/pricing · Cloudscape console"]
+  owui -.->|"Persisted provider usage"| governance
+  governance -.->|"Policy check and reservation<br/>with --metering"| gateway
+
+  style governance stroke-dasharray: 7 5
