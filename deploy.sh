@@ -41,6 +41,9 @@ APP_DOMAIN=""
 CERTIFICATE_ARN=""
 FARGATE_CPU=1024
 FARGATE_MEMORY=2048
+METERING=off
+METERING_MODE=enforce
+METERING_GSI_PHASE=""
 SKIP_CDK_BOOTSTRAP=false
 SKIP_CDK_DEPLOY=false
 ENV_ONLY=false
@@ -76,6 +79,9 @@ Options:
   --skip-bootstrap     Skip CDK bootstrap step
   --skip-cdk           Skip CDK deploy (alias for --env-only)
   --metering           Enable the opt-in metering/quota module (docs/METERING.md)
+  --metering-mode MODE  Metering decision mode: enforce (default) or observe
+  --metering-gsi-phase N
+                        Metering upgrade phase: 1 adds only the first console GSI
   --yes                Skip confirmation prompts
   --help               Show this help
 
@@ -109,7 +115,9 @@ while [[ $# -gt 0 ]]; do
     --env-only)      ENV_ONLY=true; SKIP_CDK_DEPLOY=true; SKIP_CDK_BOOTSTRAP=true; shift;;
     --skip-bootstrap) SKIP_CDK_BOOTSTRAP=true; shift;;
     --skip-cdk)      ENV_ONLY=true; SKIP_CDK_DEPLOY=true; SKIP_CDK_BOOTSTRAP=true; shift;;
-    --metering)      METERING=on; shift;;
+    --metering)      METERING=on; CLI_SET+=" METERING"; shift;;
+    --metering-mode) METERING_MODE="$2"; CLI_SET+=" METERING_MODE"; shift 2;;
+    --metering-gsi-phase) METERING_GSI_PHASE="$2"; CLI_SET+=" METERING_GSI_PHASE"; shift 2;;
     --yes)           SKIP_CONFIRM=true; shift;;
     --help)          usage 0;;
     *) err "Unknown option: $1"; usage 1;;
@@ -147,6 +155,22 @@ load_env_file
 # Override from .env if CLI didn't set them
 AWS_PROFILE="${AWS_PROFILE:-${AWS_DEPLOY_PROFILE:-}}"
 AWS_REGION="${AWS_REGION:-${BEDROCK_REGION:-us-east-1}}"
+METERING="${METERING:-off}"
+METERING_MODE="${METERING_MODE:-enforce}"
+METERING_GSI_PHASE="${METERING_GSI_PHASE:-}"
+
+if [[ "$METERING" != "on" && "$METERING" != "off" ]]; then
+  err "METERING must be 'on' or 'off' (got '$METERING')."
+  exit 1
+fi
+if [[ "$METERING_MODE" != "enforce" && "$METERING_MODE" != "observe" ]]; then
+  err "METERING_MODE/--metering-mode must be 'enforce' or 'observe' (got '$METERING_MODE')."
+  exit 1
+fi
+if [[ -n "$METERING_GSI_PHASE" && "$METERING_GSI_PHASE" != "1" ]]; then
+  err "METERING_GSI_PHASE/--metering-gsi-phase currently accepts only '1'."
+  exit 1
+fi
 
 # Sandbox override: when USE_AMBIENT_CREDS=1, ignore any profile and use the
 # ambient default credentials (AWS_SHARED_CREDENTIALS_FILE) for both the CLI and
@@ -169,8 +193,12 @@ aws_cmd() {
 export_aws_credentials() {
   if [[ -n "$AWS_PROFILE" ]]; then
     local creds
-    creds=$(aws --profile "$AWS_PROFILE" configure export-credentials --format env 2>/dev/null) || return 0
+    if ! creds=$(aws --profile "$AWS_PROFILE" configure export-credentials --format env 2>/dev/null); then
+      err "Could not export credentials for profile '$AWS_PROFILE'; refusing to let CDK use a different chain."
+      exit 1
+    fi
     eval "$creds"
+    export AWS_PROFILE
   fi
 }
 
@@ -285,6 +313,16 @@ for cmd in aws node npm python3; do
   check_command "$cmd"
   log "$cmd found: $(command -v "$cmd")"
 done
+NODE_MAJOR=$(node -p 'Number(process.versions.node.split(".")[0])')
+if [[ "$NODE_MAJOR" -lt 20 ]]; then
+  err "Node.js 20 or newer is required (found $(node --version))."
+  exit 1
+fi
+if ! python3 -m pip --version >/dev/null 2>&1; then
+  err "python3 pip is required before bootstrap (install it for $(python3 --version 2>&1))."
+  exit 1
+fi
+log "python3 pip found"
 
 # Prefer the CDK CLI pinned in infra/devDependencies over any global install.
 # aws-cdk-lib emits a cloud-assembly schema version that only a recent-enough
@@ -318,9 +356,12 @@ if [[ "$ENV_ONLY" != "true" ]]; then
     while IFS= read -r line; do [[ -n "$line" ]] && profiles+=("$line"); done <<< "$available_profiles"
     if [[ ${#profiles[@]} -gt 1 ]]; then
       prompt_select AWS_PROFILE "Select AWS profile:" "${profiles[@]}"
-    else
+    elif [[ ${#profiles[@]} -eq 1 ]]; then
       AWS_PROFILE="${profiles[0]}"
       log "Using AWS profile: $AWS_PROFILE"
+    else
+      AWS_PROFILE=""
+      log "No named AWS profiles found; using the ambient credential chain"
     fi
   fi
 
@@ -356,8 +397,21 @@ if [[ -z "$ACCOUNT_ID" ]]; then
 fi
 log "Authenticated as account $ACCOUNT_ID"
 
-# Export credentials for CDK (SSO profiles need this)
+# Export credentials for CDK (SSO profiles need this), then verify that the
+# exact exported/default chain CDK will use resolves to the account above.
 export_aws_credentials
+CDK_PROFILE_ARGS=()
+if [[ -n "$AWS_PROFILE" ]]; then
+  CDK_PROFILE_ARGS+=(--profile "$AWS_PROFILE")
+fi
+CDK_ACCOUNT_ID=$(aws --region "$AWS_REGION" sts get-caller-identity --query Account --output text 2>/dev/null) || {
+  err "The credential chain exported for CDK cannot call STS."
+  exit 1
+}
+if [[ "$CDK_ACCOUNT_ID" != "$ACCOUNT_ID" ]]; then
+  err "Credential mismatch: validated account $ACCOUNT_ID but CDK chain resolves to $CDK_ACCOUNT_ID."
+  exit 1
+fi
 
 # ── Summary ─────────────────────────────────────────────────
 header "Deployment Summary"
@@ -393,12 +447,8 @@ domain = '$APP_DOMAIN'
 cert = '$CERTIFICATE_ARN'
 if domain:
     config['domainName'] = domain
-elif 'domainName' in config:
-    del config['domainName']
 if cert:
     config['certificateArn'] = cert
-elif 'certificateArn' in config:
-    del config['certificateArn']
 with open('$DEPLOY_CONFIG', 'w') as f:
     json.dump(config, f, indent=2)
     f.write('\n')
@@ -412,7 +462,7 @@ if [[ "$SKIP_CDK_BOOTSTRAP" != "true" ]]; then
   cd "$INFRA_DIR"
   npm install --silent
   CDK_DEFAULT_ACCOUNT="$ACCOUNT_ID" CDK_DEFAULT_REGION="$AWS_REGION" \
-    $CDK bootstrap "aws://$ACCOUNT_ID/$AWS_REGION"
+    $CDK bootstrap "aws://$ACCOUNT_ID/$AWS_REGION" ${CDK_PROFILE_ARGS[@]+"${CDK_PROFILE_ARGS[@]}"}
   log "CDK bootstrap complete"
 fi
 
@@ -464,10 +514,10 @@ if [[ "$SKIP_CDK_DEPLOY" != "true" ]]; then
   cd "$INFRA_DIR"
   npm install --silent
 
-  if [[ "${METERING:-off}" == "on" ]]; then
-    info "Deploying all stacks (Network → Data → Auth → Gateway → Compute → Metering)..."
+  if [[ "$METERING" == "on" ]]; then
+    info "Deploying the five base stacks plus opt-in Metering (CDK resolves dependencies)."
   else
-    info "Deploying all stacks (Network → Data → Auth → Gateway → Compute)..."
+    info "Deploying the five base stacks (CDK resolves dependencies)."
   fi
   info "No image build — ECS pulls the unmodified official Open WebUI image."
   # The model-refresher Lambda is enabled by the CDK context flag
@@ -499,10 +549,20 @@ if [[ "$SKIP_CDK_DEPLOY" != "true" ]]; then
   # Fargate sizing (--cpu/--memory or .env FARGATE_CPU/FARGATE_MEMORY)
   SIZE_CTX=(-c "fargateCpu=${FARGATE_CPU}" -c "fargateMemory=${FARGATE_MEMORY}")
 
+  # Metering mode and staged-GSI upgrade are supported deploy inputs, not
+  # hidden bare-CDK requirements. Only pass them when the module is enabled.
+  METERING_CTX=(-c "metering=${METERING}")
+  if [[ "$METERING" == "on" ]]; then
+    METERING_CTX+=(-c "meteringMode=${METERING_MODE}")
+    [[ -n "$METERING_GSI_PHASE" ]] && METERING_CTX+=(-c "meteringGsiPhase=${METERING_GSI_PHASE}")
+    info "Metering decision mode: $METERING_MODE"
+    [[ -n "$METERING_GSI_PHASE" ]] && info "Metering GSI upgrade phase: $METERING_GSI_PHASE"
+  fi
+
   # ${arr[@]+...} expansion: bash <4.4 treats an empty array as unset under
   # set -u, so a bare "${REFRESH_CTX[@]}" would abort default deploys on macOS.
   CDK_DEFAULT_ACCOUNT="$ACCOUNT_ID" CDK_DEFAULT_REGION="$AWS_REGION" \
-    $CDK deploy --all -c "metering=${METERING:-off}" ${REFRESH_CTX[@]+"${REFRESH_CTX[@]}"} "${IMAGE_CTX[@]}" "${SIZE_CTX[@]}" --require-approval "$([ "$SKIP_CONFIRM" = "true" ] && echo never || echo broadening)"
+    $CDK deploy --all "${METERING_CTX[@]}" ${REFRESH_CTX[@]+"${REFRESH_CTX[@]}"} "${IMAGE_CTX[@]}" "${SIZE_CTX[@]}" ${CDK_PROFILE_ARGS[@]+"${CDK_PROFILE_ARGS[@]}"} --require-approval "$([ "$SKIP_CONFIRM" = "true" ] && echo never || echo broadening)"
   log "CDK deploy complete"
 fi
 
@@ -734,10 +794,19 @@ if [[ -n "$APP_IMAGE_URI" ]]; then
 echo -e "  ${GREEN}Image (official):${NC}   ${BOLD}$APP_IMAGE_URI${NC}"
 fi
 echo ""
-echo -e "  ${CYAN}Quick commands:${NC}"
-echo -e "    Update env vars only:    ${BOLD}./deploy.sh --env-only --profile $AWS_PROFILE${NC}"
-echo -e "    Redeploy (infra+image):  ${BOLD}./deploy.sh --skip-bootstrap --profile $AWS_PROFILE${NC}"
-echo -e "    Full redeploy:           ${BOLD}./deploy.sh --profile $AWS_PROFILE${NC}"
+echo -e "  ${CYAN}Quick commands (effective profile/region/topology):${NC}"
+QUICK_COMMON=(--region "$AWS_REGION")
+[[ -n "$AWS_PROFILE" ]] && QUICK_COMMON+=(--profile "$AWS_PROFILE")
+QUICK_TOPOLOGY=(--cpu "$FARGATE_CPU" --memory "$FARGATE_MEMORY")
+if [[ "$METERING" == "on" ]]; then
+  QUICK_TOPOLOGY+=(--metering --metering-mode "$METERING_MODE")
+fi
+QUICK_ENV=$(printf '%q ' ./deploy.sh --env-only "${QUICK_COMMON[@]}")
+QUICK_REDEPLOY=$(printf '%q ' ./deploy.sh --skip-bootstrap "${QUICK_COMMON[@]}" "${QUICK_TOPOLOGY[@]}")
+QUICK_FULL=$(printf '%q ' ./deploy.sh "${QUICK_COMMON[@]}" "${QUICK_TOPOLOGY[@]}")
+echo -e "    Update env vars only:    ${BOLD}${QUICK_ENV% }${NC}"
+echo -e "    Redeploy (infra+image):  ${BOLD}${QUICK_REDEPLOY% }${NC}"
+echo -e "    Full redeploy:           ${BOLD}${QUICK_FULL% }${NC}"
 if [[ -n "$APP_DOMAIN" ]]; then
   echo -e "    DNS CNAME:        ${BOLD}$APP_DOMAIN → $CF_DOMAIN${NC}"
 fi

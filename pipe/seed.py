@@ -4,9 +4,8 @@
 Seed the Amazon Bedrock gateway integration into the Open WebUI database.
 
 Runs in the background at container start, next to the unmodified official
-Open WebUI image. Waits for the `function` table (first boot runs the app's
-alembic migrations) and the first admin user (Open WebUI makes the first
-sign-up an admin), then idempotently upserts:
+Open WebUI image. Waits for the `function` and `config` tables created by the
+app's migrations, then idempotently upserts:
 
   1. The Claude manifold pipe function (pipe/gateway_anthropic_pipe.py) — serves
      the Anthropic Claude models, which are Messages-API-only on Bedrock.
@@ -19,8 +18,9 @@ sign-up an admin), then idempotently upserts:
         - "gw"  → Chat Completions lane  (flavor: chat_completions)
         - "gwr" → Responses lane          (flavor: responses, api_type: responses)
 
-Together the three lanes surface every Bedrock model that works on Open WebUI,
-all through one governed gateway with per-user identity.
+Together the three lanes expose the native capability snapshot plus dynamically
+discovered Claude models through one user-authenticated gateway. Availability
+still depends on the deployment account, region, and current service state.
 
 Upsert semantics: INSERT the full row/config on a fresh install; on an existing
 install, refresh only the pipe `content` and (re)assert the two connections if

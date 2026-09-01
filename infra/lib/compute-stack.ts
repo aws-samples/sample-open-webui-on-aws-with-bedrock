@@ -172,9 +172,9 @@ export class ComputeStack extends cdk.Stack {
     // Bedrock integration is delivered at container start: the seeder downloads
     // the Claude pipe + its installer (python + boto3 are already in the
     // official image) and runs it in the background. The installer waits for
-    // DB migrations + the first admin sign-up, then upserts the pipe function
-    // and the two OpenAI connections (chat_completions + responses) that point
-    // at the gateway. Idempotent; never blocks or crashes app start.
+    // the required database tables, then upserts the pipe function and the two
+    // OpenAI connections (chat_completions + responses) that point at the
+    // gateway. Idempotent; never blocks or crashes app start.
     const pipeAsset = new Asset(this, 'ClaudePipeAsset', {
       path: path.join(__dirname, '..', '..', 'pipe', 'gateway_anthropic_pipe.py'),
     });
@@ -190,8 +190,8 @@ export class ComputeStack extends cdk.Stack {
       `(python /tmp/seed.py >/proc/1/fd/1 2>&1 &)) ; `;
 
     // Opt-in metering module: deliver + seed the usage-metering filter the same
-    // way (own assets + own seeder — pipe/seed.py stays byte-identical so the
-    // off-state lean-core gate holds). Only reached when props.metering is set.
+    // way (own assets + own seeder; this branch is absent when metering is
+    // disabled). Only reached when props.metering is set.
     if (props.metering) {
       const meterFilterAsset = new Asset(this, 'MeteringFilterAsset', {
         path: path.join(__dirname, '..', '..', 'pipe', 'metering_filter.py'),

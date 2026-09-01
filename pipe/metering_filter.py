@@ -157,8 +157,9 @@ class Filter:
                         "type": "notification",
                         "data": {
                             "type": "warning",
-                            "content": f"You've used {min(pct, 100)}% of your monthly AI budget. "
-                            "Requests stop at 100% until the window resets.",
+                            "content": f"You've used {min(pct, 100)}% of your monthly AI policy. "
+                            "Future requests may be blocked after recorded usage reaches 100%; "
+                            "this is not a guaranteed billing ceiling.",
                         },
                     }
                 )

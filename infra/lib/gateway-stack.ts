@@ -41,9 +41,10 @@ export interface GatewayStackProps extends cdk.StackProps {
  *    Cedar policies and per-user throttling on model traffic.
  *  - Outbound auth: the gateway's execution role (GATEWAY_IAM_ROLE) signs
  *    requests to bedrock-mantle. No API keys.
- *  - A REQUEST interceptor Lambda filters the /v1/models listing to the
- *    capability-verified set (config/model-capabilities.json) per connection,
- *    so Open WebUI never surfaces a model that would fail on that API.
+ *  - A REQUEST interceptor Lambda narrows each native /v1/models listing to
+ *    the probed capability snapshot (config/model-capabilities.json). The
+ *    snapshot reduces API-lane mismatches but is not a permanent availability
+ *    guarantee.
  *  - The bedrock-mantle inference *target* is created via a custom resource
  *    (no native CFN type for inference targets yet).
  */

@@ -45,10 +45,11 @@ body_policy() {
 
 case "$CMD" in
   policy)
+    scope=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$TARGET")
     if [[ -n "$HARD" ]]; then
-      curl -sf "${hdr[@]}" -X PUT "$API/policy/$TARGET" -d "$(body_policy)"
+      curl -sf "${hdr[@]}" -X PUT "$API/policy/$scope" -d "$(body_policy)"
     else
-      curl -sf "${hdr[@]}" "$API/policy/$TARGET"
+      curl -sf "${hdr[@]}" "$API/policy/$scope"
     fi ;;
   usage)
     curl -sf "${hdr[@]}" "$API/usage/$TARGET${WINDOW:+?window=$WINDOW}" ;;
