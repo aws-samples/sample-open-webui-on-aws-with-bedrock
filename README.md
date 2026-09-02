@@ -19,6 +19,36 @@
 
 <sub>Authentic capture from a non-production deployment of the separately licensed Open WebUI interface. Synthetic user; no account or customer identifiers shown.</sub>
 
+## Introduction
+
+Teams that want to run Open WebUI on AWS still need to integrate identity, networking, persistent application data, model access, and day-two operations. This project supplies those pieces with AWS managed services and an authenticated gateway to Amazon Bedrock while keeping the official Open WebUI image unchanged. The result is a deployable reference architecture that pairs a polished, self-hosted AI interface with an AWS control plane the platform team can inspect and operate.
+
+### What is Open WebUI?
+
+[Open WebUI](https://github.com/open-webui/open-webui) is a separately licensed, self-hosted AI application that gives users a familiar conversational experience for working with large language models. Instead of teaching every user a provider API, SDK, or command-line tool, Open WebUI provides the application layer: sign-in, a model picker, chat history, rich conversations, file-oriented workflows, and an extensible interface that feels like a modern AI assistant.
+
+Open WebUI is model-provider friendly, but it is not an AWS deployment architecture by itself. A platform team still needs to decide where the application runs, how users authenticate, where conversations and files persist, how model requests are authorized, and how the environment is upgraded and operated. This sample supplies those AWS-specific pieces while leaving the official Open WebUI image unchanged.
+
+### Why Amazon Bedrock?
+
+[Amazon Bedrock](https://aws.amazon.com/bedrock/) provides managed access to foundation models from multiple providers through AWS APIs. Teams can evaluate and offer different model families without deploying or operating the underlying model-serving infrastructure themselves. They also retain an AWS control plane for permissions, regional deployment, monitoring, and cost management.
+
+A multi-model service introduces an integration challenge, however: not every model accepts the same request format. Some models use OpenAI-style Chat Completions, others require the Responses API, and Anthropic Claude uses the Messages API. Simply placing every model in one undifferentiated menu produces a poor experience—users can select models that the active connection cannot call. This sample solves that mismatch with three API-compatible lanes and a capability-aware catalog.
+
+### What does Amazon Bedrock AgentCore add?
+
+Amazon Bedrock AgentCore sits between Open WebUI and model inference as a shared, authenticated gateway. In this project, users sign in through Amazon Cognito, Open WebUI forwards each user's OAuth access token, and the AgentCore gateway validates that JWT before accepting the model request. The downstream Bedrock-compatible call is made with the gateway's IAM role, so Open WebUI does not need to store a static model API key.
+
+That gateway boundary gives the platform team a consistent point for authentication and request interception. For the two native lanes, a **REQUEST interceptor**—a Lambda function AgentCore invokes before forwarding the HTTP request—returns capability-filtered Chat Completions and Responses model lists. The Claude pipe discovers available Claude models separately with the Fargate task role because discovery has no user context; Claude inference still traverses AgentCore with the signed-in user's token. When optional governance is enabled, the same interceptor can also check recorded per-user consumption, reserve estimated usage, shape requests, and attach team-attribution headers before the managed target receives the call.
+
+### What the combination delivers
+
+For a user, the experience is deliberately simple: open one web application, sign in with Cognito, choose a compatible Bedrock model, and start a conversation. AWS credentials, model-specific endpoints, and API-shape differences remain behind the interface.
+
+For a platform team, the project is an inspectable starting point rather than a black-box product. It deploys the application and supporting data services in the team's AWS account, establishes Cognito-backed sign-in and AgentCore JWT validation, preserves the official upstream image, and provides one orchestrated path for deployment and upgrades. Optional governance can be enabled when per-user visibility, admission, attribution, pricing coverage, and an operator console are useful.
+
+The sample is intentionally transparent about its boundaries: it is an evaluation architecture rather than a supported production product; Open WebUI remains third-party software; downstream model calls use the shared gateway IAM role; model availability varies by account and region; and the optional governance layer favors model availability over exact billing enforcement. Within those boundaries, it demonstrates how AWS can turn an Open WebUI container into a persistent, user-aware, multi-model AI platform built around Amazon Bedrock.
+
 ## Why run Open WebUI this way?
 
 | Benefit | What this sample adds |
