@@ -7,13 +7,14 @@
 
 [Quick start](#deploy-for-evaluation) · [Why AgentCore](#why-agentcore-is-in-the-path) · [Architecture](#architecture-and-boundaries) · [Governance](#optional-consumption-governance) · [Costs](docs/COSTS.md) · [Full documentation](docs/README.md)
 
-> [!CAUTION]
-> **Evaluation sample—not production-ready as-is.** This repository has not
-> completed an application security review. [Open WebUI](https://github.com/open-webui/open-webui)
-> is third-party software that AWS does not maintain or support. Review the
+> [!IMPORTANT]
+> **AWS sample for evaluation and customization.** Before using this architecture
+> in production, perform your own security review and threat model, validate it
+> at your expected scale, and establish backup, monitoring, patching, and
+> operational ownership. [Open WebUI](https://github.com/open-webui/open-webui)
+> is third-party software that AWS does not maintain or support. See the
 > [production considerations](docs/AWS_DEPLOYMENT_GUIDE.md#production-considerations),
-> [`DISCLAIMER.txt`](DISCLAIMER.txt), and [third-party notices](THIRD-PARTY-LICENSES.md)
-> before deploying outside a test environment.
+> [`DISCLAIMER.txt`](DISCLAIMER.txt), and [third-party notices](THIRD-PARTY-LICENSES.md).
 
 ![The live Open WebUI new-chat experience deployed by this sample, with a Claude model selected through the Amazon Bedrock integration.](docs/images/open-webui-on-aws.png)
 
@@ -31,15 +32,15 @@ Open WebUI is model-provider friendly, but it is not an AWS deployment architect
 
 ### Why Amazon Bedrock?
 
-[Amazon Bedrock](https://aws.amazon.com/bedrock/) provides managed access to foundation models from multiple providers through AWS APIs. Teams can evaluate and offer different model families without deploying or operating the underlying model-serving infrastructure themselves. They also retain an AWS control plane for permissions, regional deployment, monitoring, and cost management.
+[Amazon Bedrock](https://docs.aws.amazon.com/bedrock/latest/userguide/what-is-bedrock.html) provides managed access to foundation models from multiple providers through AWS APIs. Teams can evaluate and offer different model families without deploying or operating the underlying model-serving infrastructure themselves. They also retain an AWS control plane for permissions, regional deployment, monitoring, and cost management. See [APIs supported by Amazon Bedrock](https://docs.aws.amazon.com/bedrock/latest/userguide/apis.html) and [supported foundation models](https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html).
 
 A multi-model service introduces an integration challenge, however: not every model accepts the same request format. Some models use OpenAI-style Chat Completions, others require the Responses API, and Anthropic Claude uses the Messages API. Simply placing every model in one undifferentiated menu produces a poor experience—users can select models that the active connection cannot call. This sample solves that mismatch with three API-compatible lanes and a capability-aware catalog.
 
 ### What does Amazon Bedrock AgentCore add?
 
-Amazon Bedrock AgentCore sits between Open WebUI and model inference as a shared, authenticated gateway. In this project, users sign in through Amazon Cognito, Open WebUI forwards each user's OAuth access token, and the AgentCore gateway validates that JWT before accepting the model request. The downstream Bedrock-compatible call is made with the gateway's IAM role, so Open WebUI does not need to store a static model API key.
+[Amazon Bedrock AgentCore](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/what-is-bedrock-agentcore.html) sits between Open WebUI and model inference as a shared, authenticated gateway. In this project, users sign in through Amazon Cognito, Open WebUI forwards each user's OAuth access token, and the AgentCore gateway validates that JWT before accepting the model request. The downstream Bedrock-compatible call is made with the gateway's IAM role, so Open WebUI does not need to store a static model API key.
 
-That gateway boundary gives the platform team a consistent point for authentication and request interception. For the two native lanes, a **REQUEST interceptor**—a Lambda function AgentCore invokes before forwarding the HTTP request—returns capability-filtered Chat Completions and Responses model lists. The Claude pipe discovers available Claude models separately with the Fargate task role because discovery has no user context; Claude inference still traverses AgentCore with the signed-in user's token. When optional governance is enabled, the same interceptor can also check recorded per-user consumption, reserve estimated usage, shape requests, and attach team-attribution headers before the managed target receives the call.
+That [AgentCore Gateway](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/gateway.html) boundary gives the platform team a consistent point for authentication and request interception. For the two native lanes, a **REQUEST interceptor**—a Lambda function AgentCore invokes before forwarding the HTTP request—returns capability-filtered Chat Completions and Responses model lists. The Claude pipe discovers available Claude models separately with the Fargate task role because discovery has no user context; Claude inference still traverses AgentCore with the signed-in user's token. When optional governance is enabled, the same interceptor can also check recorded per-user consumption, reserve estimated usage, shape requests, and attach team-attribution headers before the managed target receives the call.
 
 ### What the combination delivers
 
@@ -47,7 +48,7 @@ For a user, the experience is deliberately simple: open one web application, sig
 
 For a platform team, the project is an inspectable starting point rather than a black-box product. It deploys the application and supporting data services in the team's AWS account, establishes Cognito-backed sign-in and AgentCore JWT validation, preserves the official upstream image, and provides one orchestrated path for deployment and upgrades. Optional governance can be enabled when per-user visibility, admission, attribution, pricing coverage, and an operator console are useful.
 
-The sample is intentionally transparent about its boundaries: it is an evaluation architecture rather than a supported production product; Open WebUI remains third-party software; downstream model calls use the shared gateway IAM role; model availability varies by account and region; and the optional governance layer favors model availability over exact billing enforcement. Within those boundaries, it demonstrates how AWS can turn an Open WebUI container into a persistent, user-aware, multi-model AI platform built around Amazon Bedrock.
+The sample is intended to be adapted: review and harden the architecture for your production requirements, own the separately licensed Open WebUI application, validate model availability in each target account and region, and decide whether the optional availability-first governance behavior matches your operating model. With that ownership in place, it demonstrates how AWS managed services can turn an Open WebUI container into a persistent, user-aware, multi-model AI platform built around Amazon Bedrock.
 
 ## Why run Open WebUI this way?
 
@@ -59,17 +60,7 @@ The sample is intentionally transparent about its boundaries: it is an evaluatio
 | **Own the AWS deployment** | CDK provisions private application/data infrastructure, scalable Fargate compute, Cognito sign-in, persistent PostgreSQL/pgvector and Redis state, uploads, secrets, and CloudFront delivery. |
 | **Add governance only when it helps** | An optional, off-by-default module adds per-user usage visibility, USD/RPM admission controls, team attribution headers, pricing coverage, alarms, and a Cloudscape console. |
 
-## Is this sample a fit?
-
-| A good evaluation fit when… | Not a fit as-is when… |
-|---|---|
-| You want the familiar Open WebUI interface backed by Amazon Bedrock. | You need a production-certified or AWS-supported Open WebUI product. |
-| Cognito sign-in and user identity at a shared inference boundary matter. | You require Bedrock to be invoked as each user's IAM principal. |
-| You need Chat Completions, Responses, and Claude Messages models in one UI. | You require every model to be available in every region/account. |
-| A five-stack AWS footprint with Fargate, Aurora, Redis, and NAT is acceptable. | You need a lightweight single-container or zero-baseline-cost deployment. |
-| You want to evaluate optional per-user consumption governance. | You require exact billing, guaranteed capture, or a zero-overshoot hard ceiling. |
-
-**Default full-lane region:** `us-east-1` · **Tools:** AWS CLI v2, Node.js 20+, npm, Python 3 + pip · **Docker:** not required · **Base footprint:** five CDK stacks · **AWS charges apply**
+**Deployment profile:** `us-east-1` is the documented default for the full three-lane experience · AWS CLI v2, Node.js 20+, npm, and Python 3 + pip are required · Docker is not required · The base deployment creates five CDK stacks · AWS charges apply
 
 ## Why AgentCore is in the path
 
@@ -149,16 +140,15 @@ It is designed to answer three operator questions:
 
 1. **What did each Cognito user consume?** Persisted provider usage settles into an append-only ledger and monthly counters.
 2. **Should the next request be admitted?** The gateway interceptor checks per-user recorded USD and RPM policy before inference and can return an OpenAI-shaped 429.
-3. **Can every gateway model be priced and observed?** A live AWS Price List catalog and gateway↔pricing coverage join make unpriced models and unhealthy accounting paths visible.
+3. **How is consumption priced and monitored?** A regional AWS Price List catalog, operator overrides, coverage status, alarms, and reconciliation signals support operational review.
 
 The console provides admin governance views and an ordinary user's self-service usage view. Team attribution uses Bedrock Project/workspace headers when billing tags are activated.
 
-> [!WARNING]
-> This is an **availability-first governance sample**, not billing and not an
-> unconditional cost ceiling. Requests can overshoot before the next-request
-> block; unpriced calls remain available at recorded `$0`; group policies are
-> advisory; and capture/reconciliation have documented limits. Read the full
-> [metering contract](docs/METERING.md) before enabling it.
+> [!NOTE]
+> The optional module is designed for operational consumption governance, not
+> authoritative billing. Before production use, review its next-request
+> enforcement, capture, pricing, and reconciliation behavior in the
+> [metering contract](docs/METERING.md) and tune policies for your workload.
 
 ## Architecture and boundaries
 
