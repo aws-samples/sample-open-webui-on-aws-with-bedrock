@@ -50,8 +50,7 @@ It is the supported consumer deployment path and owns troubleshooting.
   development.
 - [`diagrams/README.md`](diagrams/README.md) — canonical diagram sources and
   deterministic light/dark rendering.
-- [`images/SCREENSHOT-SPEC.md`](images/SCREENSHOT-SPEC.md) — safe, redacted
-  metering-console capture procedure.
+- [`images/SCREENSHOT-SPEC.md`](images/SCREENSHOT-SPEC.md) — provenance and safe refresh procedure for the committed Open WebUI frames and remaining governance-console captures.
 - [`CONTRIBUTING.md`](../CONTRIBUTING.md) — contribution and validation path.
 
 ## Current document ownership

@@ -5,11 +5,18 @@ SPDX-License-Identifier: MIT-0
 
 # Screenshot capture specification
 
-No authenticated product screenshot is committed yet. The deployed application
-and metering console require Cognito sign-in, and documentation work must not
-create a user, elevate a user, or expose a real identity merely to obtain an
-image. An operator with an existing test administrator can capture the two
-frames below in about ten minutes.
+## Committed authentic product frames
+
+| File | Evidence | Capture context |
+|---|---|---|
+| [`open-webui-on-aws.png`](open-webui-on-aws.png) | Signed-in upstream Open WebUI new-chat experience with a Claude model selected through this sample's integration | Non-production deployment, synthetic canary, 1440 × 900, browser chrome excluded, 2026-09-01 |
+| [`open-webui-bedrock-models.png`](open-webui-bedrock-models.png) | Live model picker showing Claude and gateway-qualified `gw.bedrock/*` models together | Same session and viewport; no account/resource identifiers or customer content |
+
+These frames preserve Open WebUI's native branding and are factual captures of the separately licensed third-party interface. They contain no AWS account IDs, deployment hostnames, Cognito/API identifiers, ARNs, real user identity, or customer chat data. Refresh them when a supported Open WebUI upgrade materially changes the interface or the seeded model-picker presentation.
+
+## Remaining governance-console captures
+
+The metering console requires Cognito admin sign-in. An operator with an existing synthetic/test administrator can capture the two frames below in about ten minutes. Do not create or elevate a real identity merely to obtain an image.
 
 ## Safety gate
 

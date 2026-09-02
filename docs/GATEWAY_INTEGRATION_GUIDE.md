@@ -79,6 +79,10 @@ additional controls; it is not evidence that those controls already exist.
 | **Responses** | Native connection prefix `gwr`, `api_type: responses`, `system_oauth` | `/inference/v1/responses` | Interceptor returns the `responses` list selected by `x-models-flavor`. |
 | **Anthropic Messages** | Global `gateway_anthropic` manifold pipe | `/inference/v1/messages` | Pipe signs a direct `/v1/models` catalog read, keeps available `anthropic.*` IDs, and applies its optional exact-ID allowlist. |
 
+![The live Open WebUI model picker showing Claude models and gateway-qualified Bedrock models from the capability-filtered catalog.](images/open-webui-bedrock-models.png)
+
+This is an authentic non-production capture from the sample deployment. It proves that the seeded Claude and native gateway integrations coexist in the Open WebUI picker at that point in time; it does not guarantee that every listed model remains invokable in every account or region.
+
 The checked-in `messages` array remains part of the capability snapshot used by
 probe/coverage tooling, but the current Claude pipe does **not** use the gateway
 model-list interceptor for discovery.
