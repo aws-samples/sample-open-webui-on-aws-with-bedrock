@@ -1,0 +1,20 @@
+{
+  "name": "open-webui-agentcore-external-search",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "test": "npm run build && node --test dist/tests/stack.test.js",
+    "cdk": "cdk"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "2.266.0",
+    "constructs": "10.5.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.13",
+    "aws-cdk": "2.1138.0",
+    "ts-node": "10.9.2",
+    "typescript": "5.7.3"
+  }
+}

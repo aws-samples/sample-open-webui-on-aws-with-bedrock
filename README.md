@@ -173,6 +173,7 @@ Key boundaries:
 | Deploy, validate, operate, or remove the sample | [AWS deployment guide](docs/AWS_DEPLOYMENT_GUIDE.md) |
 | Evaluate consumption governance | [Metering contract and operator guide](docs/METERING.md) |
 | Build a workload-specific estimate | [Cost planning](docs/COSTS.md) |
+| Connect any Open WebUI deployment to AgentCore Web Search | [Standalone external search provider](integrations/agentcore-external-search/README.md) |
 | Pin, upgrade, or roll back Open WebUI | [Upgrade runbook](docs/UPGRADE_RUNBOOK.md) |
 | Maintain or contribute to the implementation | [Documentation home](docs/README.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) |
 

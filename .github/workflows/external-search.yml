@@ -1,0 +1,47 @@
+name: External search provider
+
+on:
+  pull_request:
+    paths:
+      - 'integrations/agentcore-external-search/**'
+      - '.github/workflows/external-search.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      AWS_EC2_METADATA_DISABLED: 'true'
+      CDK_DEFAULT_ACCOUNT: '111111111111'
+      CDK_DEFAULT_REGION: us-east-1
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          repository: open-webui/open-webui
+          ref: 2a960a59fe1dbbd35282f0556b3666d81102e781
+          sparse-checkout: backend/open_webui/retrieval/web/external.py
+          sparse-checkout-cone-mode: false
+          path: .test-sources/open-webui
+          persist-credentials: false
+      - name: Python contracts
+        working-directory: integrations/agentcore-external-search
+        env:
+          OWUI_TEST_SOURCE_DIR: ${{ github.workspace }}/.test-sources/open-webui
+        run: |
+          python3 -m venv .venv
+          .venv/bin/python -m pip install --require-hashes -r requirements.txt
+          .venv/bin/python -m pip install pytest==9.1.1
+          .venv/bin/python -m pytest tests -q
+      - name: Standalone infrastructure
+        working-directory: integrations/agentcore-external-search
+        run: |
+          npm ci
+          npm run build
+          npm test
+      - name: Documentation
+        run: node scripts/docs-integrity.mjs
